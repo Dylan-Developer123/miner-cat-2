@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Miner Cat 2</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- ============ AUTH OVERLAY ============ -->
+<div id="auth-overlay" class="overlay hidden">
+  <div class="panel auth-panel">
+    <div class="auth-logo">⛏️</div>
+    <p class="eyebrow">PLAYER PROFILE</p>
+    <h1>Claim your<br>spot in the mine</h1>
+    <p class="muted">Your progress autosaves every minute. Your display name appears on the coins leaderboard.</p>
+    <div class="tabs">
+      <button id="tab-signup" class="tab active">Create account</button>
+      <button id="tab-signin" class="tab">Sign in</button>
+    </div>
+    <div id="auth-error" class="error hidden"></div>
+    <form id="auth-form">
+      <div id="field-displayname">
+        <label for="auth-displayname">Display name</label>
+        <input id="auth-displayname" type="text" maxlength="24" placeholder="Dylan" autocomplete="nickname">
+        <small class="muted">This is what other miners see.</small>
+      </div>
+      <label for="auth-username">Username</label>
+      <input id="auth-username" type="text" maxlength="32" placeholder="miner_dylan" autocomplete="username">
+      <label for="auth-password">Password</label>
+      <input id="auth-password" type="password" placeholder="••••••••" autocomplete="current-password">
+      <small class="muted">Use at least 6 characters.</small>
+      <button type="submit" id="auth-submit" class="btn primary big">Create &amp; play</button>
+    </form>
+  </div>
+</div>
+
+<!-- ============ GAME LAYOUT ============ -->
+<div id="game-root" class="hidden">
+  <!-- Top stat bar -->
+  <header id="topbar" class="panel">
+    <div class="stat"><span class="stat-label">COINS</span><span class="stat-value">🪙 <b id="stat-coins">0</b></span></div>
+    <div class="stat"><span class="stat-label">GEMS</span><span class="stat-value">💎 <b id="stat-gems">0</b></span></div>
+    <div class="stat"><span class="stat-label">BLOCKS MINED</span><span class="stat-value">🧱 <b id="stat-blocks">0</b></span></div>
+    <div class="stat"><span class="stat-label">PICKAXE</span><span class="stat-value">LV <b id="stat-pick">1</b></span></div>
+    <div class="stat"><span class="stat-label">HEALTH</span><span class="stat-value health"><span id="health-bar"><span id="health-fill"></span></span> <b id="stat-hp">100</b></span></div>
+    <div class="top-actions">
+      <button id="btn-save" class="btn small" title="Save now">💾 Save</button>
+      <button id="btn-spawn" class="btn small" title="Teleport to spawn (auto-sells backpack)">🏠 Spawn</button>
+      <button id="btn-settings" class="btn small" title="Account settings">⚙️</button>
+      <button id="btn-signout" class="btn small" title="Sign out">↩</button>
+    </div>
+  </header>
+
+  <div id="main-row">
+    <!-- Game column -->
+    <div id="game-col">
+      <div id="stage-header" class="panel dark">
+        <span id="stage-title">Stage 1 / 25 · Meadow Mine</span>
+        <span id="stage-sub" class="muted">Surface flag · Stage 1 begins below</span>
+        <span id="player-tag" class="tag hidden"></span>
+      </div>
+      <div id="canvas-wrap">
+        <canvas id="game"></canvas>
+        <div id="toast" class="hidden"></div>
+      </div>
+      <div id="hud-line" class="panel dark"><span id="hud-text">Stage 1 · Depth 0 · Bag 0/20</span></div>
+      <!-- Touch / mouse controls -->
+      <div id="controls">
+        <button id="ctl-left" class="ctl">◀</button>
+        <button id="ctl-right" class="ctl">▶</button>
+        <button id="ctl-jump" class="ctl">JUMP</button>
+        <button id="ctl-mine" class="ctl accent">MINE</button>
+      </div>
+      <p class="hint">A/D or arrows move · W/Up/Space jumps · Click a nearby block or hold MINE to dig.</p>
+    </div>
+
+    <!-- Side panels -->
+    <aside id="side-col">
+      <section class="panel">
+        <div class="panel-head"><h3>🎒 Backpack</h3><span id="bag-count" class="muted">0 items</span></div>
+        <div id="bag-grid" class="ore-grid"></div>
+        <button id="btn-sell" class="btn primary wide">Sell backpack (<span id="sell-value">0</span> 🪙)</button>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><h3>⬆️ Upgrades</h3></div>
+        <div id="upgrade-list"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><h3>🏆 Achievements</h3><span id="ach-count" class="muted">0 / 3</span></div>
+        <div id="ach-list"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><h3>📊 Leaderboard</h3><span class="muted">by coins</span></div>
+        <div id="leaderboard"><p class="muted">Loading…</p></div>
+      </section>
+
+      <section id="admin-panel" class="panel hidden">
+        <div class="panel-head"><h3>🛠️ Admin</h3><span class="tag dev">DEVELOPER</span></div>
+        <div class="admin-row">
+          <button class="btn small" data-admin="coins">+1000 🪙</button>
+          <button class="btn small" data-admin="heal">Heal</button>
+        </div>
+        <div class="admin-row">
+          <button class="btn small" data-admin="upgrades">Max upgrades</button>
+          <button class="btn small" data-admin="stage25">Go to stage 25</button>
+        </div>
+      </section>
+    </aside>
+  </div>
+</div>
+
+<!-- ============ SETTINGS MODAL ============ -->
+<div id="settings-overlay" class="overlay hidden">
+  <div class="panel modal">
+    <h2>Account settings</h2>
+    <div id="settings-error" class="error hidden"></div>
+    <form id="settings-form">
+      <label for="set-displayname">Display name</label>
+      <input id="set-displayname" type="text" maxlength="24">
+      <label for="set-username">Username</label>
+      <input id="set-username" type="text" maxlength="32">
+      <label for="set-newpassword">New password <span class="muted">(leave blank to keep)</span></label>
+      <input id="set-newpassword" type="password" placeholder="••••••••" autocomplete="new-password">
+      <label for="set-currentpassword">Current password <span class="muted">(required)</span></label>
+      <input id="set-currentpassword" type="password" placeholder="••••••••" autocomplete="current-password">
+      <div class="row">
+        <button type="submit" class="btn primary">Save changes</button>
+        <button type="button" id="btn-close-settings" class="btn">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="game.js"></script>
+</body>
+</html>

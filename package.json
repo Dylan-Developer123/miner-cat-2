@@ -1,0 +1,1 @@
+{"dependencies":{"bcryptjs":"^2.4.3","cookie-parser":"^1.4.6","express":"^4.21.2"},"description":"Miner Cat 2 — self-hostable digging game with accounts, saves and a leaderboard","engines":{"node":">=22"},"main":"server.js","name":"miner-cat-2-standalone","scripts":{"start":"node server.js"},"type":"commonjs","version":"1.0.0"}

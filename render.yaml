@@ -1,0 +1,15 @@
+# Render blueprint for Miner Cat 2 (one-click deploy)
+# In the Render dashboard: New > Blueprint > connect your repo containing this file.
+services:
+  - type: web
+    name: miner-cat-2
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # DB_PATH defaults to ./data.sqlite inside the service.
+      # NOTE: on the free tier the filesystem is ephemeral — the SQLite file
+      # resets on every redeploy. See README for the durable option.
