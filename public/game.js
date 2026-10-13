@@ -47,9 +47,17 @@ const ORE_COLORS = {
 };
 
 const ACHIEVEMENTS = [
-  { id: 'rock-rookie', name: 'Rock rookie', desc: 'Break 10 rocks' },
-  { id: 'deep-paws',   name: 'Deep paws',   desc: 'Reach depth 25' },
-  { id: 'big-swing',   name: 'Big swing',   desc: 'Reach 20 tap power' },
+  { id: 'rock-rookie', name: 'Rock rookie', desc: 'Break 10 blocks', coins: 50 },
+  { id: 'block-buster', name: 'Block buster', desc: 'Break 100 blocks', coins: 200 },
+  { id: 'mining-mogul', name: 'Mining mogul', desc: 'Break 1,000 blocks', coins: 1000 },
+  { id: 'deep-paws',   name: 'Deep paws',   desc: 'Reach depth 25', coins: 150 },
+  { id: 'deep-diver',  name: 'Deep diver',  desc: 'Reach depth 100', coins: 500 },
+  { id: 'stage-explorer', name: 'Stage explorer', desc: 'Reach stage 10', coins: 300 },
+  { id: 'big-swing',   name: 'Big swing',   desc: 'Reach 20 tap power', coins: 250 },
+  { id: 'maxed-out',   name: 'Maxed out',   desc: 'Max all upgrades', coins: 2000 },
+  { id: 'coin-starter', name: 'Coin starter', desc: 'Hold 1,000 coins', coins: 100 },
+  { id: 'coin-tycoon', name: 'Coin tycoon', desc: 'Hold 100,000 coins', coins: 1000 },
+  { id: 'gem-hunter',  name: 'Gem hunter',  desc: 'Find 10 gems', coins: 500 },
 ];
 
 /* ------------------------------- API client ---------------------------- */
@@ -229,6 +237,7 @@ function movePlayer(dt) {
   const rows = S.stage >= STAGES ? Infinity : STAGE_ROWS;
   if (ty >= rows && S.stage < STAGES) {
     S.stage++; S.py = -1.5; S.vy = 0;
+    unlockAch('stage-explorer');
     toast(`Stage ${S.stage} / 25 · ${STAGE_NAMES[S.stage - 1]}`);
     refreshStageHeader();
   } else if (S.py < -4 && S.stage > 1) {
@@ -245,6 +254,7 @@ function movePlayer(dt) {
   if (depth > S.maxDepth) {
     S.maxDepth = depth;
     unlockAch('deep-paws');
+    unlockAch('deep-diver');
   }
 
   // lava damage (25 dps, reduced by armor)
@@ -320,11 +330,13 @@ function updateMining(dt) {
     S.blocksMined++;
     if (bagCount() < bagCapacity()) {
       S.backpack[t.type] = (S.backpack[t.type] || 0) + 1;
-      if (t.type === 'diamond') S.gems++;
+      if (t.type === 'diamond') { S.gems++; unlockAch('gem-hunter'); }
     } else {
       toast('Backpack full! Tap "Sell backpack" to sell anywhere.');
     }
     unlockAch('rock-rookie');
+    unlockAch('block-buster');
+    unlockAch('mining-mogul');
     refreshUI();
   } else {
     S.dmg.set(key, left);
@@ -348,6 +360,7 @@ function buyUpgrade(kind) {
   if (kind === 'pick') { S.pickLevel++; unlockAch('big-swing'); }
   if (kind === 'armor') S.armorLevel++;
   if (kind === 'bag') S.bagLevel++;
+  unlockAch('maxed-out');
   toast('Upgrade purchased!');
   refreshUI();
 }
@@ -357,6 +370,8 @@ function sellBackpack() {
   if (total === 0) { toast('Backpack is empty.'); return; }
   S.coins += total;
   S.backpack = {};
+  unlockAch('coin-starter');
+  unlockAch('coin-tycoon');
   toast(`Sold for ${total} coins!`);
   refreshUI();
 }
@@ -367,6 +382,8 @@ function goToSpawn(sell = true) {
     if (total > 0) { S.coins += total; toast(`Teleported to spawn — sold backpack for ${total} coins!`); }
     else toast('Teleported to spawn.');
     S.backpack = {};
+    unlockAch('coin-starter');
+    unlockAch('coin-tycoon');
   }
   S.stage = 1; S.px = SPAWN_X + 0.5; S.py = -0.5;
   S.vx = 0; S.vy = 0; S.health = MAX_HP;
@@ -374,11 +391,25 @@ function goToSpawn(sell = true) {
 }
 function unlockAch(id) {
   if (id === 'rock-rookie' && S.blocksMined < 10) return;
+  if (id === 'block-buster' && S.blocksMined < 100) return;
+  if (id === 'mining-mogul' && S.blocksMined < 1000) return;
+  if (id === 'deep-paws' && S.maxDepth < 25) return;
+  if (id === 'deep-diver' && S.maxDepth < 100) return;
+  if (id === 'stage-explorer' && S.stage < 10) return;
   if (id === 'big-swing' && tapPower() < 20) return;
+  if (id === 'maxed-out' && (S.pickLevel < 50 || S.armorLevel < 50 || S.bagLevel < 50)) return;
+  if (id === 'coin-starter' && S.coins < 1000) return;
+  if (id === 'coin-tycoon' && S.coins < 100000) return;
+  if (id === 'gem-hunter' && S.gems < 10) return;
   if (S.achievements.includes(id)) return;
   S.achievements.push(id);
   const a = ACHIEVEMENTS.find((x) => x.id === id);
-  toast(`🏆 Achievement: ${a.name}!`);
+  if (a && a.coins) {
+    S.coins += a.coins;
+    toast(`🏆 ${a.name}! +${a.coins} 🪙`);
+  } else {
+    toast(`🏆 Achievement: ${a.name}!`);
+  }
   refreshUI();
 }
 
@@ -705,7 +736,7 @@ function refreshUI() {
     if (has) done++;
     const row = document.createElement('div');
     row.className = 'ach-row' + (has ? ' done' : '');
-    row.innerHTML = `<div class="ach-num">${has ? '✓' : i + 1}</div><div><b>${a.name}</b><small>${a.desc}</small></div>`;
+    row.innerHTML = `<div class="ach-num">${has ? '✓' : i + 1}</div><div><b>${a.name}</b><small>${a.desc}${a.coins ? ` · +${a.coins} 🪙` : ''}</small></div>`;
     al.appendChild(row);
   });
   $('ach-count').textContent = `${done} / ${ACHIEVEMENTS.length}`;

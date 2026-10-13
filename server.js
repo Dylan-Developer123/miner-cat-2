@@ -465,7 +465,7 @@ async function main() {
         save.god = !save.god;
         break;
       case 'achievements':
-        save.achievements = ['rock-rookie', 'deep-paws', 'big-swing'];
+        save.achievements = ['rock-rookie', 'block-buster', 'mining-mogul', 'deep-paws', 'deep-diver', 'stage-explorer', 'big-swing', 'maxed-out', 'coin-starter', 'coin-tycoon', 'gem-hunter'];
         break;
       case 'heal':
         save.health = 100;
