@@ -873,6 +873,42 @@ document.querySelectorAll('[data-admin]').forEach((btn) => {
     } catch (ex) { toast(ex.message); }
   };
 });
+// Ban / unban accounts
+document.getElementById('ban-btn').addEventListener('click', () => banUser(true));
+document.getElementById('unban-btn').addEventListener('click', () => banUser(false));
+async function banUser(ban) {
+  const target = document.getElementById('ban-input').value.trim();
+  if (!target) { toast('Enter a username.'); return; }
+  if (!confirm(`${ban ? 'Ban' : 'Unban'} "${target}"?`)) return;
+  try {
+    const r = await api.admin(ban ? 'ban' : 'unban', { target });
+    toast(r.banned ? `Banned ${r.username}.` : `Unbanned ${r.username}.`);
+    document.getElementById('ban-input').value = '';
+  } catch (ex) { toast(ex.message); }
+}
+// Global broadcast message
+document.getElementById('broadcast-btn').addEventListener('click', async () => {
+  const message = document.getElementById('broadcast-input').value.trim();
+  try {
+    await api.admin('broadcast', { message });
+    document.getElementById('broadcast-input').value = '';
+    toast(message ? 'Broadcast sent!' : 'Broadcast cleared.');
+    checkBroadcast();
+  } catch (ex) { toast(ex.message); }
+});
+async function checkBroadcast() {
+  try {
+    const r = await fetch('/api/broadcast').then((x) => x.json());
+    const bar = document.getElementById('broadcast-bar');
+    if (r.message) {
+      document.getElementById('broadcast-text').textContent = r.message;
+      bar.classList.remove('hidden');
+    } else {
+      bar.classList.add('hidden');
+    }
+  } catch (e) { /* ignore */ }
+}
+setInterval(checkBroadcast, 60000);
 function refreshGodBtn() {
   const b = document.querySelector('[data-admin="god"]');
   if (b) b.textContent = S.god ? '😇 God: ON' : '😇 God mode';
@@ -934,6 +970,7 @@ async function startGame() {
   refreshUI();
   refreshLeaderboard();
   setInterval(refreshLeaderboard, 60000);
+  checkBroadcast();
   resize();
   startAutosave();
   S.started = true;

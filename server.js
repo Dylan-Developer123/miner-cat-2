@@ -135,6 +135,7 @@ const SCHEMA_SQLITE = `
     password_hash TEXT NOT NULL,
     display_name  TEXT NOT NULL,
     is_admin      INTEGER NOT NULL DEFAULT 0,
+    banned        INTEGER NOT NULL DEFAULT 0,
     coins         INTEGER NOT NULL DEFAULT 0,
     created_at    TEXT NOT NULL DEFAULT (datetime('now'))
   );
@@ -150,6 +151,12 @@ const SCHEMA_SQLITE = `
   );
   CREATE INDEX IF NOT EXISTS idx_users_coins ON users (coins DESC);
   CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions (user_id);
+  CREATE TABLE IF NOT EXISTS broadcasts (
+    id         INTEGER PRIMARY KEY CHECK (id = 1),
+    message    TEXT NOT NULL DEFAULT '',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+  INSERT INTO broadcasts (id, message) VALUES (1, '') ON CONFLICT (id) DO NOTHING;
 `;
 
 const SCHEMA_PG = `
@@ -159,6 +166,7 @@ const SCHEMA_PG = `
     password_hash TEXT NOT NULL,
     display_name  TEXT NOT NULL,
     is_admin      INTEGER NOT NULL DEFAULT 0,
+    banned        INTEGER NOT NULL DEFAULT 0,
     coins         INTEGER NOT NULL DEFAULT 0,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
@@ -174,6 +182,12 @@ const SCHEMA_PG = `
   );
   CREATE INDEX IF NOT EXISTS idx_users_coins ON users (coins DESC);
   CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions (user_id);
+  CREATE TABLE IF NOT EXISTS broadcasts (
+    id         INTEGER PRIMARY KEY CHECK (id = 1),
+    message    TEXT NOT NULL DEFAULT '',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+  INSERT INTO broadcasts (id, message) VALUES (1, '') ON CONFLICT (id) DO NOTHING;
 `;
 
 async function main() {
@@ -194,6 +208,14 @@ async function main() {
     db.exec(SCHEMA_SQLITE);
     console.log('Using local SQLite database at ' + DB_PATH);
   }
+
+  // Migrations for existing databases
+  try { await db.exec('ALTER TABLE users ADD COLUMN banned INTEGER NOT NULL DEFAULT 0'); } catch (e) { /* already exists */ }
+  try { await db.exec(`CREATE TABLE IF NOT EXISTS broadcasts (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    message TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )`); } catch (e) { /* already exists */ }
 
   const NOW = USE_PG ? 'NOW()' : "datetime('now')";
 
@@ -360,6 +382,7 @@ async function main() {
     // Constant-time-ish failure path: always run a bcrypt compare.
     const ok = row ? bcrypt.compareSync(password, row.password_hash) : false;
     if (!ok) return res.status(401).json({ error: 'Invalid username or password.' });
+    if (row.banned) return res.status(403).json({ error: 'This account has been banned.' });
     await createSession(res, row.id);
     res.json({ user: publicProfile(await stmtGetUserById.get(row.id)) });
   });
@@ -411,6 +434,11 @@ async function main() {
         developer: !!r.is_admin,
       })),
     });
+  });
+
+  app.get('/api/broadcast', async (req, res) => {
+    const row = await db.prepare('SELECT message FROM broadcasts WHERE id = 1').get();
+    res.json({ message: row ? row.message : '' });
   });
 
   // -------------------------------------------------------------------------
@@ -487,6 +515,28 @@ async function main() {
         await db.prepare('DELETE FROM saves').run();
         await db.prepare('DELETE FROM users').run();
         return res.json({ ok: true, wiped: true });
+      case 'ban':
+      case 'unban': {
+        const target = String(req.body.target || '').trim();
+        if (!target) return res.status(400).json({ error: 'Username required.' });
+        const victim = await db.prepare('SELECT id, is_admin FROM users WHERE username = ?').get(target);
+        if (!victim) return res.status(404).json({ error: 'Account not found.' });
+        if (victim.id === req.user.id) return res.status(400).json({ error: 'You cannot ban yourself.' });
+        if (victim.is_admin) return res.status(400).json({ error: 'Cannot ban an admin.' });
+        const bannedVal = command === 'ban' ? 1 : 0;
+        await db.prepare('UPDATE users SET banned = ? WHERE id = ?').run(bannedVal, victim.id);
+        if (bannedVal) await db.prepare('DELETE FROM sessions WHERE user_id = ?').run(victim.id); // kick them out
+        return res.json({ ok: true, banned: !!bannedVal, username: target });
+      }
+      case 'broadcast': {
+        const msg = String(req.body.message || '').slice(0, 500);
+        if (USE_PG) {
+          await db.prepare('UPDATE broadcasts SET message = $1, updated_at = NOW() WHERE id = 1').run(msg);
+        } else {
+          await db.prepare("UPDATE broadcasts SET message = ?, updated_at = datetime('now') WHERE id = 1").run(msg);
+        }
+        return res.json({ ok: true, message: msg });
+      }
       default:
         return res.status(400).json({ error: 'Unknown admin command.' });
     }

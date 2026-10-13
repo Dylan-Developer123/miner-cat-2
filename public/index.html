@@ -39,6 +39,7 @@
 <!-- ============ GAME LAYOUT ============ -->
 <div id="game-root" class="hidden">
   <!-- Top stat bar -->
+  <div id="broadcast-bar" class="hidden">📢 <span id="broadcast-text"></span></div>
   <header id="topbar" class="panel">
     <div class="stat"><span class="stat-label">COINS</span><span class="stat-value">🪙 <b id="stat-coins">0</b></span></div>
     <div class="stat"><span class="stat-label">GEMS</span><span class="stat-value">💎 <b id="stat-gems">0</b></span></div>
@@ -123,6 +124,15 @@
         <div class="admin-row">
           <button class="btn small" data-admin="stage25">Go to stage 25</button>
           <button class="btn small" data-admin="wipe" style="border-color:#d9534f;color:#a33;">Delete all accounts</button>
+        </div>
+        <div class="admin-row">
+          <input id="ban-input" class="text-input" placeholder="Username" style="flex:1;min-width:0;">
+          <button class="btn small" id="ban-btn" style="border-color:#d9534f;color:#a33;">Ban</button>
+          <button class="btn small" id="unban-btn">Unban</button>
+        </div>
+        <div class="admin-row">
+          <input id="broadcast-input" class="text-input" placeholder="Global message…" style="flex:1;min-width:0;" maxlength="500">
+          <button class="btn small" id="broadcast-btn">📢 Send</button>
         </div>
       </section>
     </aside>

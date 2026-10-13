@@ -214,6 +214,11 @@ form small { display: block; margin-top: 4px; }
   #controls { display: none; }
   #controls.force-show { display: flex; }
 }
+/* Global broadcast banner */
+#broadcast-bar { background: #3a2c10; border: 2px solid #f5c542; border-radius: 10px; padding: 8px 12px; margin-bottom: 8px; font-weight: bold; color: #ffe9a8; }
+#broadcast-bar.hidden { display: none; }
+/* Admin text inputs */
+.text-input { background: #0f0d09; border: 1px solid #4a3f2a; color: #f5eeda; border-radius: 8px; padding: 6px 10px; font-size: 14px; }
 @media (max-height: 540px) {
   #game-root { padding: 6px; }
   #topbar { margin-bottom: 6px; padding: 8px 10px; }
