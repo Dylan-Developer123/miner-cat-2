@@ -209,7 +209,11 @@ form small { display: block; margin-top: 4px; }
     height: clamp(260px, calc(100dvh - 400px), 58dvh);
   }
 }
-/* Short windows (landscape phones, small desktop windows): slim everything */
+/* Hide touch controls on devices with a mouse/keyboard (they reappear on touch) */
+@media (hover: hover) and (pointer: fine) {
+  #controls { display: none; }
+  #controls.force-show { display: flex; }
+}
 @media (max-height: 540px) {
   #game-root { padding: 6px; }
   #topbar { margin-bottom: 6px; padding: 8px 10px; }

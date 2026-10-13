@@ -802,7 +802,15 @@ function loop(t) {
 /* ------------------------------- wiring -------------------------------- */
 $('btn-sell').onclick = sellBackpack;
 $('btn-spawn').onclick = () => goToSpawn(true);
-$('btn-top').onclick = () => goToSpawn(false);
+$('btn-top').onclick = () => goToSpawn(true);
+// Touch controls: hidden on keyboard/mouse devices via CSS; show if touch is used.
+const controlsEl = document.getElementById('controls');
+window.addEventListener('touchstart', () => controlsEl.classList.add('force-show'), { passive: true });
+window.addEventListener('keydown', (e) => {
+  if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown',' ','a','d','w','A','D','W'].includes(e.key)) {
+    controlsEl.classList.remove('force-show');
+  }
+});
 $('btn-save').onclick = () => saveNow(false);
 $('btn-signout').onclick = async () => { await saveNow(true); await api.signout(); location.reload(); };
 $('btn-settings').onclick = () => {
