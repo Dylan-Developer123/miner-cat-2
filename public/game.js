@@ -7,20 +7,6 @@
  * ========================================================================= */
 'use strict';
 
-// Show JS errors on screen (debug)
-function showError(msg) {
-  const d = document.createElement('div');
-  d.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#ff4444;color:#fff;padding:10px;z-index:99999;font:12px monospace;white-space:pre-wrap;';
-  d.textContent = 'ERROR: ' + msg;
-  document.body.appendChild(d);
-}
-window.addEventListener('error', (e) => {
-  showError(e.message + '\n' + (e.filename || '') + ':' + (e.lineno || ''));
-});
-window.addEventListener('unhandledrejection', (e) => {
-  showError('Promise: ' + (e.reason && e.reason.message ? e.reason.message : e.reason));
-});
-
 /* ------------------------------- constants ----------------------------- */
 const COLS = 21;                 // world width in blocks
 const SPAWN_X = 10;              // middle column (0-based)
