@@ -92,7 +92,7 @@ const S = {
   pickLevel: 1, armorLevel: 1, bagLevel: 1,
   stage: 1, depth: 0, maxDepth: 0,
   px: SPAWN_X + 0.5, py: -0.5,   // player pos in tiles (x=center, y=feet)
-  health: MAX_HP,
+  health: MAX_HP, god: false,
   backpack: {},                  // oreType -> count
   achievements: [],
   seeds: {},                     // stage -> seed
@@ -114,7 +114,7 @@ function stateToSave() {
     coins: S.coins, gems: S.gems, blocksMined: S.blocksMined,
     pickLevel: S.pickLevel, armorLevel: S.armorLevel, bagLevel: S.bagLevel,
     stage: S.stage, depth: S.depth, maxDepth: S.maxDepth,
-    px: S.px, py: S.py, health: S.health,
+    px: S.px, py: S.py, health: S.health, god: !!S.god,
     backpack: S.backpack, achievements: S.achievements,
     seeds: S.seeds, cleared: [...S.cleared].slice(-20000),
   };
@@ -126,6 +126,7 @@ function loadSave(save) {
   S.px = (typeof save.px === 'number') ? save.px : SPAWN_X + 0.5;
   S.py = (typeof save.py === 'number') ? save.py : -0.5;
   S.health = (typeof save.health === 'number') ? Math.min(MAX_HP, save.health) : MAX_HP;
+  S.god = !!save.god;
   S.backpack = save.backpack || {};
   S.achievements = Array.isArray(save.achievements) ? save.achievements : [];
   S.seeds = save.seeds || {};
@@ -265,6 +266,7 @@ function tilesOverlap(type) {
 }
 
 function hurt(amount) {
+  if (S.god) return; // god mode: no damage
   S.health -= amount;
   S.lastHurtAt = performance.now();
   if (S.health <= 0) {
@@ -285,12 +287,13 @@ function mineTarget() {
       if (isMineable(b)) return { x: t.x, y: t.y, type: b };
     }
   }
-  // otherwise: adjacent tile in facing direction (prefer below)
-  const fx = Math.floor(S.px) + S.facing;
+  // otherwise: block under feet first (dig down), then adjacent in facing direction
+  const px = Math.floor(S.px);
+  const fx = px + S.facing;
   const fy = Math.floor(S.py);
   const cands = [
+    [px, fy + 1],
     [fx, fy], [fx, fy - 1],
-    [Math.floor(S.px), fy],
     [fx, fy + 1],
   ];
   for (const [x, y] of cands) {
@@ -788,16 +791,28 @@ $('settings-form').addEventListener('submit', async (e) => {
 document.querySelectorAll('[data-admin]').forEach((btn) => {
   btn.onclick = async () => {
     const cmd = btn.dataset.admin;
+    if (cmd === 'wipe') {
+      if (!confirm('Delete ALL accounts and all saved progress? This cannot be undone.')) return;
+      if (!confirm('Really wipe everything? You will be signed out.')) return;
+      try { await api.admin('wipe', {}); } catch (ex) { toast(ex.message); return; }
+      location.reload();
+      return;
+    }
     try {
-      const extra = cmd === 'coins' ? { amount: 1000 }
+      const extra = cmd === 'coins' ? { amount: 1000000 }
+        : cmd === 'gems' ? { amount: 100 }
         : cmd === 'upgrades' ? { pick: 50, armor: 50, bag: 50 } : {};
       const { save } = await api.admin(cmd, extra);
       loadSave(save);
-      refreshStageHeader(); refreshUI();
+      refreshStageHeader(); refreshUI(); refreshGodBtn();
       toast('Admin power used!');
     } catch (ex) { toast(ex.message); }
   };
 });
+function refreshGodBtn() {
+  const b = document.querySelector('[data-admin="god"]');
+  if (b) b.textContent = S.god ? '😇 God: ON' : '😇 God mode';
+}
 
 function updatePlayerTag() {
   const tag = $('player-tag');
@@ -849,7 +864,7 @@ async function startGame() {
   } catch {
     loadSave({}); // fresh game
   }
-  updatePlayerTag();
+  updatePlayerTag(); refreshGodBtn();
   refreshStageHeader();
   refreshUI();
   refreshLeaderboard();

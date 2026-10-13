@@ -458,6 +458,15 @@ async function main() {
       case 'coins':
         save.coins = clamp((save.coins || 0) + (amount || 0), 0, 1e9, 0);
         break;
+      case 'gems':
+        save.gems = clamp((save.gems || 0) + (amount || 0), 0, 1e9, 0);
+        break;
+      case 'god':
+        save.god = !save.god;
+        break;
+      case 'achievements':
+        save.achievements = ['rock-rookie', 'deep-paws', 'big-swing'];
+        break;
       case 'heal':
         save.health = 100;
         break;
@@ -472,6 +481,12 @@ async function main() {
         save.playerX = 10;
         save.playerY = 0;
         break;
+      case 'wipe':
+        // Delete ALL accounts, sessions, and saves. Next registration becomes admin.
+        await db.prepare('DELETE FROM sessions').run();
+        await db.prepare('DELETE FROM saves').run();
+        await db.prepare('DELETE FROM users').run();
+        return res.json({ ok: true, wiped: true });
       default:
         return res.status(400).json({ error: 'Unknown admin command.' });
     }
