@@ -220,6 +220,7 @@ async function main() {
   try { await db.exec('ALTER TABLE users ADD COLUMN is_owner INTEGER NOT NULL DEFAULT 0'); } catch (e) { /* already exists */ }
   try { await db.exec('ALTER TABLE users ADD COLUMN is_moderator INTEGER NOT NULL DEFAULT 0'); } catch (e) { /* already exists */ }
   try { await db.exec('ALTER TABLE users ADD COLUMN is_developer INTEGER NOT NULL DEFAULT 0'); } catch (e) { /* already exists */ }
+  try { await db.exec('ALTER TABLE users ADD COLUMN hide_tags INTEGER NOT NULL DEFAULT 0'); } catch (e) { /* already exists */ }
   try { await db.exec(`CREATE TABLE IF NOT EXISTS broadcasts (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     message TEXT NOT NULL DEFAULT '',
@@ -335,14 +336,16 @@ async function main() {
 
   // Public profile shape — never includes password_hash.
   function publicProfile(u) {
+    const hide = !!u.hide_tags;
     return {
       id: u.id,
       username: u.username,
       displayName: u.display_name,
-      isAdmin: !!u.is_admin,
-      isOwner: !!u.is_owner || !!u.is_admin,
-      isModerator: !!u.is_moderator || !!u.is_admin,
-      isDeveloper: !!u.is_developer || !!u.is_admin,
+      isAdmin: hide ? false : !!u.is_admin,
+      isOwner: hide ? false : (!!u.is_owner || !!u.is_admin),
+      isModerator: hide ? false : (!!u.is_moderator || !!u.is_admin),
+      isDeveloper: hide ? false : (!!u.is_developer || !!u.is_admin),
+      hideTags: hide,
       coins: u.coins,
     };
   }
@@ -500,6 +503,15 @@ async function main() {
     const updatedProfile = publicProfile(user);
     updatedProfile.canGiveTags = await isOriginalOwner(user.id);
     res.json({ user: updatedProfile });
+  });
+
+  app.post('/api/toggle-tags', requireAuth, async (req, res) => {
+    const hide = !!req.body.hide;
+    await db.prepare('UPDATE users SET hide_tags = ? WHERE id = ?').run(hide ? 1 : 0, req.user.id);
+    const user = await stmtGetUserById.get(req.user.id);
+    const profile = publicProfile(user);
+    profile.canGiveTags = await isOriginalOwner(user.id);
+    res.json({ user: profile });
   });
 
   // -------------------------------------------------------------------------
@@ -681,7 +693,7 @@ async function main() {
       username: user.username,
       displayName: user.display_name,
       x: 10.5, y: -0.5, stage: 1,
-      tags: {
+      tags: user.hide_tags ? {} : {
         owner: !!user.is_owner || !!user.is_admin,
         admin: !!user.is_admin,
         moderator: !!user.is_moderator || !!user.is_admin,

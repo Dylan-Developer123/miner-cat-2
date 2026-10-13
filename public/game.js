@@ -1110,6 +1110,29 @@ document.getElementById('gfx-low').addEventListener('click', () => setGfx('low')
 document.getElementById('gfx-med').addEventListener('click', () => setGfx('med'));
 document.getElementById('gfx-high').addEventListener('click', () => setGfx('high'));
 updateGfxButtons();
+// Show/hide tags toggle
+async function updateTagsBtn() {
+  const hide = S.user && S.user.hideTags;
+  document.getElementById('btn-tags').textContent = hide ? '🏷️ Show tags: OFF' : '🏷️ Show tags: ON';
+}
+document.getElementById('btn-tags').addEventListener('click', async () => {
+  const hide = !(S.user && S.user.hideTags);
+  try {
+    const res = await fetch('/api/toggle-tags', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hide }),
+    });
+    const data = await res.json();
+    if (data.user) {
+      S.user = data.user;
+      updatePlayerTag();
+      refreshLeaderboard();
+      updateTagsBtn();
+      toast(hide ? 'Tags hidden' : 'Tags shown');
+    }
+  } catch (e) { toast('Failed to update.'); }
+});
 $('settings-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const err = $('settings-error');
@@ -1550,6 +1573,7 @@ async function startGame() {
   refreshStageHeader();
   refreshUI();
   updateWorldButtons();
+  updateTagsBtn();
   refreshLeaderboard();
   setInterval(refreshLeaderboard, 60000);
   checkBroadcast();
