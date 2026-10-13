@@ -12,6 +12,8 @@ const COLS = 21;                 // world width in blocks
 const SPAWN_X = 10;              // middle column (0-based)
 const STAGE_ROWS = 50;           // rows per stage (stages 1..24)
 const STAGES = 100;
+const MP_STAGE = 1001;       // multiplayer world
+const LOUNGE_STAGE = 1002;   // admin's lounge
 const SAVE_INTERVAL_MS = 60 * 1000;
 const LAVA_DPS = 25;
 const MAX_HP = 100;
@@ -187,7 +189,7 @@ function blockAt(stage, x, y) {
   if (stage === LOUNGE_STAGE) return y === 0 ? 'wood' : 'air';
   const key = stage + ':' + x + ':' + y;
   // Multiplayer and lounge worlds use shared cleared set
-  if (stage === 1001 || stage === LOUNGE_STAGE) return MP.cleared.has(key) ? 'air' : genBlock(stage, x, y);
+  if (stage === MP_STAGE || stage === LOUNGE_STAGE) return MP.cleared.has(key) ? 'air' : genBlock(stage, x, y);
   if (S.cleared.has(key)) return 'air';
   return genBlock(stage, x, y);
 }
@@ -1132,7 +1134,6 @@ function updatePlayerTag() {
 /* ------------------------------ multiplayer ---------------------------- */
 const MP = { ws: null, id: null, players: new Map(), lastPos: 0, cleared: new Set(), soloStage: 1, soloX: 10.5, soloY: -0.5 };
 // Admin lounge — separate world (stage 1002) for admins only
-const LOUNGE_STAGE = 1002;
 function loungeJoin() {
   if (S.inLounge) return;
   if (!S.user || !(S.user.isAdmin || S.user.isModerator || S.user.isDeveloper || S.user.isOwner)) {
@@ -1166,7 +1167,7 @@ function mpJoin() {
   // Remember solo position
   MP.soloStage = S.stage; MP.soloX = S.px; MP.soloY = S.py;
   S.inMp = true;
-  S.stage = 1001; // multiplayer world
+  S.stage = MP_STAGE; // multiplayer world
   S.px = 10.5; S.py = -0.5; S.vx = 0; S.vy = 0;
   S.dmg.clear();
   refreshStageHeader(); refreshUI();
@@ -1210,7 +1211,7 @@ function mpConnect() {
       if (p) { p.x = msg.x; p.y = msg.y; p.stage = msg.stage; }
     } else if (msg.t === 'break') {
       // Someone else broke a block in multiplayer/lounge — remove it locally (no loot)
-      if ((msg.stage === 1001 || msg.stage === LOUNGE_STAGE) && (S.inMp || S.inLounge)) {
+      if ((msg.stage === MP_STAGE || msg.stage === LOUNGE_STAGE) && (S.inMp || S.inLounge)) {
         MP.cleared.add(msg.stage + ':' + msg.x + ':' + msg.y);
       }
     } else if (msg.t === 'voice-join' || msg.t === 'voice-offer' || msg.t === 'voice-answer' || msg.t === 'voice-ice' || msg.t === 'voice-leave') {
@@ -1233,7 +1234,7 @@ function updateMpCount() {
 // Draw other players (multiplayer/lounge only)
 function drawMpPlayers() {
   if (!S.inMp && !S.inLounge) return;
-  const myStage = S.inLounge ? LOUNGE_STAGE : 1001;
+  const myStage = S.inLounge ? LOUNGE_STAGE : MP_STAGE;
   for (const p of MP.players.values()) {
     if (p.stage !== myStage) continue;
     const sx = (p.x - camX) * TILE, sy = (p.y - camY) * TILE;
