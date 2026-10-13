@@ -1046,7 +1046,9 @@ function mpJoin() {
   S.dmg.clear();
   refreshStageHeader(); refreshUI();
   toast('🌐 Joined multiplayer world!');
-  document.getElementById('btn-mp').textContent = '🌐 Leave';
+  const mpBtn = document.getElementById('btn-mp');
+  mpBtn.textContent = '👤 Single player';
+  mpBtn.title = 'Back to single player';
 }
 function mpLeave() {
   if (!S.inMp) return;
@@ -1055,7 +1057,9 @@ function mpLeave() {
   S.vx = 0; S.vy = 0; S.dmg.clear();
   refreshStageHeader(); refreshUI();
   toast('Back to solo.');
-  document.getElementById('btn-mp').textContent = '🌐 Multiplayer';
+  const mpBtn2 = document.getElementById('btn-mp');
+  mpBtn2.textContent = '🌐 Multiplayer';
+  mpBtn2.title = 'Join multiplayer world';
 }
 function mpConnect() {
   if (MP.ws) { try { MP.ws.close(); } catch (e) {} }
