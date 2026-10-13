@@ -229,7 +229,7 @@ async function main() {
   const NOW = USE_PG ? 'NOW()' : "datetime('now')";
 
   // Prepared statements
-  const stmtGetUserById = db.prepare('SELECT id, username, display_name, is_admin, coins FROM users WHERE id = ?');
+  const stmtGetUserById = db.prepare('SELECT * FROM users WHERE id = ?');
   const stmtGetUserAuthByUsername = db.prepare('SELECT * FROM users WHERE username = ?');
   const stmtCountUsers = db.prepare('SELECT COUNT(*) AS n FROM users');
   const stmtInsertUser = db.prepare(
@@ -634,8 +634,92 @@ async function main() {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
   });
 
-  app.listen(PORT, () => {
+  const httpServer = app.listen(PORT, () => {
     console.log(`Miner Cat 2 listening on port ${PORT} (${USE_PG ? 'Postgres' : 'local SQLite'})`);
+  });
+
+  // -------------------------------------------------------------------------
+  // Multiplayer — WebSocket server for live player positions and block breaks
+  // -------------------------------------------------------------------------
+  const WebSocket = require('ws');
+  const wss = new WebSocket.Server({ server: httpServer, path: '/ws' });
+  const online = new Map(); // userId -> { ws, username, displayName, x, y, stage, tags }
+
+  function broadcast(msg, exceptId) {
+    const data = JSON.stringify(msg);
+    for (const [id, p] of online) {
+      if (id === exceptId) continue;
+      if (p.ws.readyState === WebSocket.OPEN) p.ws.send(data);
+    }
+  }
+
+  wss.on('connection', async (ws, req) => {
+    // Auth via session cookie
+    let userId = null;
+    try {
+      const cookies = (req.headers.cookie || '').split(';').map((c) => c.trim());
+      const sessCookie = cookies.find((c) => c.startsWith(SESSION_COOKIE + '='));
+      if (sessCookie) {
+        const token = sessCookie.slice(SESSION_COOKIE.length + 1);
+        const srow = await stmtGetSession.get(token);
+        if (srow && Number(srow.expires_at) > Date.now()) {
+          const u = await stmtGetUserById.get(srow.user_id);
+          if (u && !u.banned) userId = u.id;
+        }
+      }
+    } catch (e) {}
+    if (!userId) { ws.close(4001, 'Not authenticated'); return; }
+
+    const user = await stmtGetUserById.get(userId);
+    const player = {
+      ws,
+      id: userId,
+      username: user.username,
+      displayName: user.display_name,
+      x: 10.5, y: -0.5, stage: 1,
+      tags: {
+        owner: !!user.is_owner || !!user.is_admin,
+        admin: !!user.is_admin,
+        moderator: !!user.is_moderator || !!user.is_admin,
+        developer: !!user.is_developer || !!user.is_admin,
+      },
+    };
+    // Replace old connection if re-connecting
+    if (online.has(userId)) { try { online.get(userId).ws.close(); } catch (e) {} }
+    online.set(userId, player);
+    console.log(`[ws] ${player.username} joined (${online.size} online)`);
+
+    // Send current players to the newcomer
+    const others = [...online.values()].filter((p) => p.id !== userId).map((p) => ({
+      id: p.id, username: p.username, displayName: p.displayName,
+      x: p.x, y: p.y, stage: p.stage, tags: p.tags,
+    }));
+    ws.send(JSON.stringify({ t: 'welcome', id: userId, players: others }));
+    // Announce to others
+    broadcast({ t: 'join', player: { id: player.id, username: player.username, displayName: player.displayName, x: player.x, y: player.y, stage: player.stage, tags: player.tags } }, userId);
+
+    ws.on('message', (raw) => {
+      let msg;
+      try { msg = JSON.parse(raw); } catch (e) { return; }
+      const p = online.get(userId);
+      if (!p) return;
+      if (msg.t === 'pos' && typeof msg.x === 'number' && typeof msg.y === 'number') {
+        p.x = msg.x; p.y = msg.y; p.stage = msg.stage | 0;
+        // Broadcast to others on the same stage
+        broadcast({ t: 'pos', id: userId, x: p.x, y: p.y, stage: p.stage }, userId);
+      } else if (msg.t === 'break' && Number.isInteger(msg.x) && Number.isInteger(msg.y)) {
+        // Relay block break to others on the same stage
+        broadcast({ t: 'break', stage: msg.stage | 0, x: msg.x, y: msg.y, by: player.username }, userId);
+      }
+    });
+
+    ws.on('close', () => {
+      if (online.get(userId)?.ws === ws) {
+        online.delete(userId);
+        broadcast({ t: 'leave', id: userId });
+        console.log(`[ws] ${player.username} left (${online.size} online)`);
+      }
+    });
   });
 }
 

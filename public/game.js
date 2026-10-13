@@ -339,6 +339,10 @@ function updateMining(dt) {
   if (left <= 0) {
     S.dmg.delete(key);
     S.cleared.add(key);
+    // Tell other players about the break
+    if (MP.ws && MP.ws.readyState === 1) {
+      MP.ws.send(JSON.stringify({ t: 'break', stage: S.stage, x: t.x, y: t.y }));
+    }
     S.blocksMined++;
     if (bagCount() < bagCapacity()) {
       S.backpack[t.type] = (S.backpack[t.type] || 0) + 1;
@@ -650,6 +654,7 @@ function render(t) {
     ctx.closePath(); ctx.fill();
   }
   drawCat(t);
+  drawMpPlayers();
 }
 
 /* -------------------------------- input -------------------------------- */
@@ -824,6 +829,7 @@ function loop(t) {
   lastT = t;
   movePlayer(dt);
   updateMining(dt);
+  mpSendPos();
   // smooth camera follows player downward (and slightly horizontally)
   const targetCamY = S.py - P.h / 2 - (canvas.height / dpr / TILE) * 0.42;
   camY += (targetCamY - camY) * Math.min(1, dt * 6);
@@ -1027,6 +1033,84 @@ function updatePlayerTag() {
   });
 }
 
+/* ------------------------------ multiplayer ---------------------------- */
+const MP = { ws: null, id: null, players: new Map(), lastPos: 0 };
+function mpConnect() {
+  if (MP.ws) { try { MP.ws.close(); } catch (e) {} }
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const ws = new WebSocket(proto + '//' + location.host + '/ws');
+  MP.ws = ws;
+  ws.onopen = () => console.log('[mp] connected');
+  ws.onclose = () => {
+    console.log('[mp] disconnected, retrying in 5s');
+    setTimeout(() => { if (S.started) mpConnect(); }, 5000);
+  };
+  ws.onmessage = (ev) => {
+    let msg;
+    try { msg = JSON.parse(ev.data); } catch (e) { return; }
+    if (msg.t === 'welcome') {
+      MP.id = msg.id;
+      MP.players.clear();
+      for (const p of msg.players) MP.players.set(p.id, p);
+      updateMpCount();
+    } else if (msg.t === 'join') {
+      MP.players.set(msg.player.id, msg.player);
+      toast(`🟢 ${msg.player.displayName} joined!`);
+      updateMpCount();
+    } else if (msg.t === 'leave') {
+      MP.players.delete(msg.id);
+      updateMpCount();
+    } else if (msg.t === 'pos') {
+      const p = MP.players.get(msg.id);
+      if (p) { p.x = msg.x; p.y = msg.y; p.stage = msg.stage; }
+    } else if (msg.t === 'break') {
+      // Someone else broke a block — remove it locally (no loot)
+      if (msg.stage === S.stage) S.cleared.add(msg.stage + ':' + msg.x + ':' + msg.y);
+    }
+  };
+}
+function mpSendPos() {
+  if (!MP.ws || MP.ws.readyState !== 1) return;
+  const now = performance.now();
+  if (now - MP.lastPos < 100) return; // 10 updates/sec max
+  MP.lastPos = now;
+  MP.ws.send(JSON.stringify({ t: 'pos', x: S.px, y: S.py, stage: S.stage }));
+}
+function updateMpCount() {
+  const el = document.getElementById('mp-count');
+  if (el) el.textContent = MP.players.size + 1;
+}
+// Draw other players on the same stage
+function drawMpPlayers() {
+  for (const p of MP.players.values()) {
+    if (p.stage !== S.stage) continue;
+    const sx = (p.x - camX) * TILE, sy = (p.y - camY) * TILE;
+    if (sx < -50 || sy < -50 || sx > W + 50 || sy > H + 50) continue;
+    // Simple cat: orange body with name
+    ctx.fillStyle = '#e8a33d';
+    ctx.beginPath();
+    ctx.arc(sx, sy - TILE * 0.3, TILE * 0.28, 0, Math.PI * 2);
+    ctx.fill();
+    // Ears
+    ctx.fillStyle = '#e8a33d';
+    ctx.beginPath();
+    ctx.moveTo(sx - TILE * 0.22, sy - TILE * 0.5);
+    ctx.lineTo(sx - TILE * 0.12, sy - TILE * 0.72);
+    ctx.lineTo(sx - TILE * 0.02, sy - TILE * 0.5);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(sx + TILE * 0.02, sy - TILE * 0.5);
+    ctx.lineTo(sx + TILE * 0.12, sy - TILE * 0.72);
+    ctx.lineTo(sx + TILE * 0.22, sy - TILE * 0.5);
+    ctx.fill();
+    // Name
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${Math.max(10, TILE * 0.28)}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText(p.displayName, sx, sy - TILE * 0.85);
+  }
+}
+
 /* --------------------------------- boot -------------------------------- */
 let authMode = 'signup';
 function setAuthMode(mode) {
@@ -1074,6 +1158,7 @@ async function startGame() {
   resize();
   startAutosave();
   S.started = true;
+  mpConnect();
   requestAnimationFrame(loop);
 }
 
