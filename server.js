@@ -135,6 +135,9 @@ const SCHEMA_SQLITE = `
     password_hash TEXT NOT NULL,
     display_name  TEXT NOT NULL,
     is_admin      INTEGER NOT NULL DEFAULT 0,
+    is_owner      INTEGER NOT NULL DEFAULT 0,
+    is_moderator  INTEGER NOT NULL DEFAULT 0,
+    is_developer  INTEGER NOT NULL DEFAULT 0,
     banned        INTEGER NOT NULL DEFAULT 0,
     coins         INTEGER NOT NULL DEFAULT 0,
     created_at    TEXT NOT NULL DEFAULT (datetime('now'))
@@ -166,6 +169,9 @@ const SCHEMA_PG = `
     password_hash TEXT NOT NULL,
     display_name  TEXT NOT NULL,
     is_admin      INTEGER NOT NULL DEFAULT 0,
+    is_owner      INTEGER NOT NULL DEFAULT 0,
+    is_moderator  INTEGER NOT NULL DEFAULT 0,
+    is_developer  INTEGER NOT NULL DEFAULT 0,
     banned        INTEGER NOT NULL DEFAULT 0,
     coins         INTEGER NOT NULL DEFAULT 0,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -211,6 +217,9 @@ async function main() {
 
   // Migrations for existing databases
   try { await db.exec('ALTER TABLE users ADD COLUMN banned INTEGER NOT NULL DEFAULT 0'); } catch (e) { /* already exists */ }
+  try { await db.exec('ALTER TABLE users ADD COLUMN is_owner INTEGER NOT NULL DEFAULT 0'); } catch (e) { /* already exists */ }
+  try { await db.exec('ALTER TABLE users ADD COLUMN is_moderator INTEGER NOT NULL DEFAULT 0'); } catch (e) { /* already exists */ }
+  try { await db.exec('ALTER TABLE users ADD COLUMN is_developer INTEGER NOT NULL DEFAULT 0'); } catch (e) { /* already exists */ }
   try { await db.exec(`CREATE TABLE IF NOT EXISTS broadcasts (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     message TEXT NOT NULL DEFAULT '',
@@ -239,7 +248,7 @@ async function main() {
   const stmtDeleteSession = db.prepare('DELETE FROM sessions WHERE token = ?');
   const stmtDeleteUserSessions = db.prepare('DELETE FROM sessions WHERE user_id = ?');
   const stmtLeaderboard = db.prepare(
-    'SELECT display_name, coins, is_admin FROM users ORDER BY coins DESC, created_at ASC LIMIT 50'
+    'SELECT display_name, coins, is_admin, is_owner, is_moderator, is_developer FROM users ORDER BY coins DESC, created_at ASC LIMIT 50'
   );
 
   // -------------------------------------------------------------------------
@@ -330,6 +339,9 @@ async function main() {
       username: u.username,
       displayName: u.display_name,
       isAdmin: !!u.is_admin,
+      isOwner: !!u.is_owner || !!u.is_admin,
+      isModerator: !!u.is_moderator || !!u.is_admin,
+      isDeveloper: !!u.is_developer || !!u.is_admin,
       coins: u.coins,
     };
   }
@@ -431,7 +443,12 @@ async function main() {
       leaderboard: rows.map((r) => ({
         displayName: r.display_name,
         coins: r.coins,
-        developer: !!r.is_admin,
+        tags: {
+          owner: !!r.is_owner || !!r.is_admin,
+          admin: !!r.is_admin,
+          moderator: !!r.is_moderator || !!r.is_admin,
+          developer: !!r.is_developer || !!r.is_admin,
+        },
       })),
     });
   });
@@ -565,6 +582,20 @@ async function main() {
         await db.prepare('UPDATE users SET coins = 0 WHERE id = ?').run(targetUser.id);
         await db.prepare('DELETE FROM sessions WHERE user_id = ?').run(targetUser.id); // force re-login
         return res.json({ ok: true, username: target, self: targetUser.id === req.user.id });
+      }
+      case 'tag': {
+        const target = String(req.body.target || '').trim();
+        const tag = String(req.body.tag || '').toLowerCase();
+        const grant = req.body.grant !== false; // default to granting
+        const validTags = { admin: 'is_admin', moderator: 'is_moderator', developer: 'is_developer' };
+        if (!target) return res.status(400).json({ error: 'Username required.' });
+        if (!validTags[tag]) return res.status(400).json({ error: 'Invalid tag. Use admin, moderator, or developer.' });
+        const targetUser = await db.prepare('SELECT id, is_admin FROM users WHERE username = ?').get(target);
+        if (!targetUser) return res.status(404).json({ error: 'Account not found.' });
+        if (targetUser.id === req.user.id) return res.status(400).json({ error: 'You already have all tags.' });
+        const col = validTags[tag];
+        await db.prepare(`UPDATE users SET ${col} = ? WHERE id = ?`).run(grant ? 1 : 0, targetUser.id);
+        return res.json({ ok: true, username: target, tag, granted: grant });
       }
       default:
         return res.status(400).json({ error: 'Unknown admin command.' });

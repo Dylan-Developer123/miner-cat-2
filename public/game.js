@@ -774,7 +774,7 @@ async function refreshLeaderboard() {
     const el = $('leaderboard');
     if (!leaderboard.length) { el.innerHTML = '<p class="muted">No miners yet.</p>'; return; }
     el.innerHTML = '<ol>' + leaderboard.map((r) =>
-      `<li><b>${escapeHtml(r.displayName)}</b> ${r.developer ? '<span class="tag owner">👑 OWNER</span> <span class="tag dev">🛠️ ADMIN</span> <span class="tag mod">🛡️ MODERATOR</span> <span class="tag coder">💻 DEVELOPER</span>' : ''} — 🪙 ${r.coins}</li>`
+      `<li><b>${escapeHtml(r.displayName)}</b> ${tagHtml({ isOwner: r.tags.owner, isAdmin: r.tags.admin, isModerator: r.tags.moderator, isDeveloper: r.tags.developer })} — 🪙 ${r.coins}</li>`
     ).join('') + '</ol>';
   } catch { /* leaderboard is best-effort */ }
 }
@@ -953,6 +953,21 @@ document.getElementById('reset-btn').addEventListener('click', () => {
 document.getElementById('reset-self-btn').addEventListener('click', () => {
   resetProgress(null, true);
 });
+// Gift/remove tags (admin/moderator/developer — owner is exclusive)
+async function changeTag(grant) {
+  const target = document.getElementById('tag-input').value.trim();
+  const tag = document.getElementById('tag-select').value;
+  if (!target) { toast('Enter a username.'); return; }
+  const action = grant ? 'GIVE' : 'REMOVE';
+  if (!confirm(`${action} the ${tag.toUpperCase()} tag ${grant ? 'to' : 'from'} "${target}"?`)) return;
+  try {
+    const r = await api.admin('tag', { target, tag, grant });
+    toast(r.granted ? `Gave ${r.tag} tag to ${r.username}!` : `Removed ${r.tag} tag from ${r.username}.`);
+    document.getElementById('tag-input').value = '';
+  } catch (ex) { toast(ex.message); }
+}
+document.getElementById('tag-grant-btn').addEventListener('click', () => changeTag(true));
+document.getElementById('tag-revoke-btn').addEventListener('click', () => changeTag(false));
 async function checkBroadcast() {
   try {
     const r = await fetch('/api/broadcast').then((x) => x.json());
@@ -971,14 +986,25 @@ function refreshGodBtn() {
   if (b) b.textContent = S.god ? '😇 God: ON' : '😇 God mode';
 }
 
+function tagHtml(u) {
+  let h = '';
+  if (u.isOwner) h += '<span class="tag owner">👑 OWNER</span> ';
+  if (u.isAdmin) h += '<span class="tag dev">🛠️ ADMIN</span> ';
+  if (u.isModerator) h += '<span class="tag mod">🛡️ MODERATOR</span> ';
+  if (u.isDeveloper) h += '<span class="tag coder">💻 DEVELOPER</span>';
+  return h.trim();
+}
 function updatePlayerTag() {
   const tag = $('player-tag');
-  if (S.user && S.user.isAdmin) {
-    tag.innerHTML = '<span class="tag owner">👑 OWNER</span> <span class="tag dev">🛠️ ADMIN</span> <span class="tag mod">🛡️ MODERATOR</span> <span class="tag coder">💻 DEVELOPER</span>';
+  if (S.user && (S.user.isOwner || S.user.isAdmin || S.user.isModerator || S.user.isDeveloper)) {
+    tag.innerHTML = tagHtml(S.user);
     tag.classList.remove('hidden');
-    document.getElementById('ctl-admin').classList.remove('hidden');
   } else {
     tag.classList.add('hidden');
+  }
+  if (S.user && S.user.isAdmin) {
+    document.getElementById('ctl-admin').classList.remove('hidden');
+  } else {
     document.getElementById('ctl-admin').classList.add('hidden');
     $('admin-panel').classList.add('hidden');
   }
