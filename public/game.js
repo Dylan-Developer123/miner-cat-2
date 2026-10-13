@@ -770,6 +770,7 @@ function loop(t) {
 /* ------------------------------- wiring -------------------------------- */
 $('btn-sell').onclick = sellBackpack;
 $('btn-spawn').onclick = () => goToSpawn(true);
+$('btn-top').onclick = () => goToSpawn(false);
 $('btn-save').onclick = () => saveNow(false);
 $('btn-signout').onclick = async () => { await saveNow(true); await api.signout(); location.reload(); };
 $('btn-settings').onclick = () => {
