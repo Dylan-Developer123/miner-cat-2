@@ -118,6 +118,7 @@ const S = {
   cleared: new Set(),            // "stage:x:y" of mined blocks
   // transient:
   vx: 0, vy: 0, onGround: false, facing: 1,
+  inMp: false,                   // in multiplayer world?
   dmg: new Map(),                // "stage:x:y" -> hp remaining
   lastHurtAt: 0,
   started: false,
@@ -182,6 +183,8 @@ function blockAt(stage, x, y) {
   if (stage === 1 && x === SPAWN_X && y === 0) return 'bedrock'; // spawn block
   if (y < 0) return 'air';
   const key = stage + ':' + x + ':' + y;
+  // Multiplayer world uses shared cleared set
+  if (stage === 1001) return MP.cleared.has(key) ? 'air' : genBlock(stage, x, y);
   if (S.cleared.has(key)) return 'air';
   return genBlock(stage, x, y);
 }
@@ -338,9 +341,13 @@ function updateMining(dt) {
   const left = remain - tapPower();
   if (left <= 0) {
     S.dmg.delete(key);
-    S.cleared.add(key);
-    // Tell other players about the break
-    if (MP.ws && MP.ws.readyState === 1) {
+    if (S.inMp) {
+      MP.cleared.add(key);
+    } else {
+      S.cleared.add(key);
+    }
+    // Tell other players about the break (multiplayer world only)
+    if (MP.ws && MP.ws.readyState === 1 && S.inMp) {
       MP.ws.send(JSON.stringify({ t: 'break', stage: S.stage, x: t.x, y: t.y }));
     }
     S.blocksMined++;
@@ -722,6 +729,11 @@ function toast(msg) {
   toastTimer = setTimeout(() => el.classList.add('hidden'), 2200);
 }
 function refreshStageHeader() {
+  if (S.inMp) {
+    $('stage-title').textContent = `🌐 Multiplayer World`;
+    $('stage-sub').textContent = 'Mining with friends!';
+    return;
+  }
   $('stage-title').textContent = `Stage ${S.stage} / 100 · ${STAGE_NAMES[S.stage - 1]}`;
   $('stage-sub').textContent = S.stage === 1 ? 'Surface flag · Stage 1 begins below'
     : S.stage === 25 ? 'Endless depths below…' : `Stage ${S.stage} begins below`;
@@ -844,6 +856,9 @@ function loop(t) {
 $('btn-sell').onclick = sellBackpack;
 $('btn-spawn').onclick = () => goToSpawn(true);
 $('btn-top').onclick = () => goToTop();
+document.getElementById('btn-mp').addEventListener('click', () => {
+  if (S.inMp) mpLeave(); else mpJoin();
+});
 // Touch controls: hidden on keyboard/mouse devices via CSS; show if touch is used.
 const controlsEl = document.getElementById('controls');
 window.addEventListener('touchstart', () => controlsEl.classList.add('force-show'), { passive: true });
@@ -1034,7 +1049,28 @@ function updatePlayerTag() {
 }
 
 /* ------------------------------ multiplayer ---------------------------- */
-const MP = { ws: null, id: null, players: new Map(), lastPos: 0 };
+const MP = { ws: null, id: null, players: new Map(), lastPos: 0, cleared: new Set(), soloStage: 1, soloX: 10.5, soloY: -0.5 };
+function mpJoin() {
+  if (S.inMp) return;
+  // Remember solo position
+  MP.soloStage = S.stage; MP.soloX = S.px; MP.soloY = S.py;
+  S.inMp = true;
+  S.stage = 1001; // multiplayer world
+  S.px = 10.5; S.py = -0.5; S.vx = 0; S.vy = 0;
+  S.dmg.clear();
+  refreshStageHeader(); refreshUI();
+  toast('🌐 Joined multiplayer world!');
+  document.getElementById('btn-mp').textContent = '🌐 Leave';
+}
+function mpLeave() {
+  if (!S.inMp) return;
+  S.inMp = false;
+  S.stage = MP.soloStage; S.px = MP.soloX; S.py = MP.soloY;
+  S.vx = 0; S.vy = 0; S.dmg.clear();
+  refreshStageHeader(); refreshUI();
+  toast('Back to solo.');
+  document.getElementById('btn-mp').textContent = '🌐 Multiplayer';
+}
 function mpConnect() {
   if (MP.ws) { try { MP.ws.close(); } catch (e) {} }
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -1064,13 +1100,13 @@ function mpConnect() {
       const p = MP.players.get(msg.id);
       if (p) { p.x = msg.x; p.y = msg.y; p.stage = msg.stage; }
     } else if (msg.t === 'break') {
-      // Someone else broke a block — remove it locally (no loot)
-      if (msg.stage === S.stage) S.cleared.add(msg.stage + ':' + msg.x + ':' + msg.y);
+      // Someone else broke a block in the multiplayer world — remove it locally (no loot)
+      if (msg.stage === 1001 && S.inMp) MP.cleared.add(msg.stage + ':' + msg.x + ':' + msg.y);
     }
   };
 }
 function mpSendPos() {
-  if (!MP.ws || MP.ws.readyState !== 1) return;
+  if (!MP.ws || MP.ws.readyState !== 1 || !S.inMp) return;
   const now = performance.now();
   if (now - MP.lastPos < 100) return; // 10 updates/sec max
   MP.lastPos = now;
@@ -1080,10 +1116,11 @@ function updateMpCount() {
   const el = document.getElementById('mp-count');
   if (el) el.textContent = MP.players.size + 1;
 }
-// Draw other players on the same stage
+// Draw other players (multiplayer world only)
 function drawMpPlayers() {
+  if (!S.inMp) return;
   for (const p of MP.players.values()) {
-    if (p.stage !== S.stage) continue;
+    if (p.stage !== 1001) continue;
     const sx = (p.x - camX) * TILE, sy = (p.y - camY) * TILE;
     if (sx < -50 || sy < -50 || sx > W + 50 || sy > H + 50) continue;
     // Simple cat: orange body with name
