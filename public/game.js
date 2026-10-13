@@ -1150,6 +1150,7 @@ function loungeJoin() {
   refreshStageHeader(); refreshUI();
   toast('🛋️ Welcome to the admin lounge!');
   document.getElementById('btn-voice').classList.remove('hidden');
+  updateWorldButtons();
 }
 function loungeLeave() {
   if (!S.inLounge) return;
@@ -1160,6 +1161,12 @@ function loungeLeave() {
   refreshStageHeader(); refreshUI();
   toast('Left the lounge.');
   document.getElementById('btn-voice').classList.add('hidden');
+  updateWorldButtons();
+}
+function updateWorldButtons() {
+  document.getElementById('btn-mp').classList.toggle('in-world', !!S.inMp);
+  document.getElementById('btn-solo').classList.toggle('in-world', !S.inMp && !S.inLounge);
+  document.getElementById('btn-lounge').classList.toggle('in-world', !!S.inLounge);
 }
 function mpJoin() {
   if (S.inMp) return;
@@ -1172,6 +1179,7 @@ function mpJoin() {
   S.dmg.clear();
   refreshStageHeader(); refreshUI();
   toast('🌐 Joined multiplayer world!');
+  updateWorldButtons();
 }
 function mpLeave() {
   if (!S.inMp) return;
@@ -1180,6 +1188,7 @@ function mpLeave() {
   S.vx = 0; S.vy = 0; S.dmg.clear();
   refreshStageHeader(); refreshUI();
   toast('Back to solo.');
+  updateWorldButtons();
 }
 function mpConnect() {
   if (MP.ws) { try { MP.ws.close(); } catch (e) {} }
@@ -1397,6 +1406,7 @@ async function startGame() {
   updatePlayerTag(); refreshGodBtn();
   refreshStageHeader();
   refreshUI();
+  updateWorldButtons();
   refreshLeaderboard();
   setInterval(refreshLeaderboard, 60000);
   checkBroadcast();
