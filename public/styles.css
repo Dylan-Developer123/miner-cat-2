@@ -64,6 +64,8 @@ html, body {
   letter-spacing: 0.05em;
 }
 .tag.dev { background: #b3541e; }
+.tag.owner { background: #c9a227; color: #1a1408; }
+.tag.mod { background: #2e7d4f; }
 
 /* ---------- auth overlay ---------- */
 .overlay {
