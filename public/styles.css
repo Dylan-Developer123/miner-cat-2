@@ -123,7 +123,13 @@ form small { display: block; margin-top: 4px; }
   position: relative; border-radius: 12px; overflow: hidden;
   border: 3px solid #171208; background: #0e0c07;
 }
-#game { display: block; width: 100%; height: calc(100vh - 340px); min-height: 420px; touch-action: none; }
+#game {
+  display: block; width: 100%; touch-action: none;
+  /* Fluid height: fills the window while leaving room for topbar + controls.
+     dvh (with vh fallback) tracks mobile browser chrome as it shows/hides. */
+  height: clamp(320px, calc(100vh - 360px), 76vh);
+  height: clamp(320px, calc(100dvh - 360px), 76dvh);
+}
 #toast {
   position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
   background: rgba(20, 16, 10, 0.9); color: #ffe9b8;
@@ -179,6 +185,40 @@ form small { display: block; margin-top: 4px; }
 @media (max-width: 900px) {
   #main-row { flex-direction: column; }
   #side-col { flex: 1 1 auto; width: 100%; }
-  #game { height: calc(100vh - 380px); min-height: 360px; }
+  #game {
+    height: clamp(280px, calc(100vh - 430px), 62vh);
+    height: clamp(280px, calc(100dvh - 430px), 62dvh);
+  }
   .top-actions { margin-left: 0; }
+}
+/* Phones: compact chrome so the canvas keeps a playable size */
+@media (max-width: 560px) {
+  #game-root { padding: 6px; }
+  #topbar { gap: 6px; margin-bottom: 8px; padding: 8px 10px; }
+  .stat { min-width: 0; padding: 4px 10px; }
+  .stat-label { font-size: 0.6em; }
+  .stat-value { font-size: 1em; }
+  #health-bar { width: 64px; }
+  .btn.small { padding: 6px 8px; font-size: 0.8em; }
+  .ctl { padding: 12px 0; font-size: 1em; }
+  #stage-header { flex-wrap: wrap; gap: 6px; }
+  #player-tag { margin-left: 0; }
+  .ore-grid { grid-template-columns: repeat(6, 1fr); }
+  #game {
+    height: clamp(260px, calc(100vh - 400px), 58vh);
+    height: clamp(260px, calc(100dvh - 400px), 58dvh);
+  }
+}
+/* Short windows (landscape phones, small desktop windows): slim everything */
+@media (max-height: 540px) {
+  #game-root { padding: 6px; }
+  #topbar { margin-bottom: 6px; padding: 8px 10px; }
+  #stage-header { margin-bottom: 6px; }
+  #hud-line { margin-top: 6px; }
+  #controls { margin-top: 6px; }
+  .hint { display: none; }
+  #game {
+    height: clamp(240px, calc(100vh - 300px), 68vh);
+    height: clamp(240px, calc(100dvh - 300px), 68dvh);
+  }
 }

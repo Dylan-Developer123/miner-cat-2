@@ -389,9 +389,12 @@ function resize() {
   const w = canvas.clientWidth, h = canvas.clientHeight;
   canvas.width = Math.round(w * dpr);
   canvas.height = Math.round(h * dpr);
-  TILE = w / COLS; // zoom: entire 21-block width (borders) always visible
+  // zoom: entire 21-block width (borders) always visible; clamp tile size so
+  // blocks stay tappable on tiny screens and sane on huge ones
+  TILE = Math.max(14, Math.min(72, w / COLS));
 }
 window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', () => setTimeout(resize, 120));
 
 function screenToTile(sx, sy) {
   const r = canvas.getBoundingClientRect();
