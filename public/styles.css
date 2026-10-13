@@ -222,7 +222,8 @@ form small { display: block; margin-top: 4px; }
 #broadcast-bar.hidden { display: none; }
 .broadcast-from { color: #f5c542; text-shadow: 0 0 8px rgba(245, 197, 66, 0.6); }
 /* Admin text inputs */
-.text-input { background: #0f0d09; border: 1px solid #4a3f2a; color: #f5eeda; border-radius: 8px; padding: 6px 10px; font-size: 14px; }
+.text-input { background: #ffffff; border: 1px solid #d9c69c; color: #2a2118; border-radius: 8px; padding: 6px 10px; font-size: 14px; }
+.text-input::placeholder { color: #999; }
 @media (max-height: 540px) {
   #game-root { padding: 6px; }
   #topbar { margin-bottom: 6px; padding: 8px 10px; }
