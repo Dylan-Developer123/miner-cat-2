@@ -1008,6 +1008,11 @@ function updatePlayerTag() {
     document.getElementById('ctl-admin').classList.add('hidden');
     $('admin-panel').classList.add('hidden');
   }
+  // Tag gifting UI is owner-only
+  const canGive = S.user && S.user.canGiveTags;
+  document.querySelectorAll('.tag-admin-row').forEach((el) => {
+    el.classList.toggle('hidden', !canGive);
+  });
 }
 
 /* --------------------------------- boot -------------------------------- */

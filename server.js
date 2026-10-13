@@ -345,6 +345,10 @@ async function main() {
       coins: u.coins,
     };
   }
+  async function isOriginalOwner(userId) {
+    const r = await db.prepare('SELECT id FROM users ORDER BY id ASC LIMIT 1').get();
+    return r && r.id === userId;
+  }
 
   // --- validation helpers ---------------------------------------------------
   function validUsername(v) {
@@ -382,7 +386,9 @@ async function main() {
     const authRow = await stmtGetUserAuthByUsername.get(username);
     const user = await stmtGetUserById.get(authRow.id);
     await createSession(res, user.id);
-    res.status(201).json({ user: publicProfile(user) });
+    const profile = publicProfile(user);
+    profile.canGiveTags = await isOriginalOwner(user.id);
+    res.status(201).json({ user: profile });
   });
 
   app.post('/api/signin', rateLimit(30, 10 * 60 * 1000), async (req, res) => {
@@ -396,7 +402,10 @@ async function main() {
     if (!ok) return res.status(401).json({ error: 'Invalid username or password.' });
     if (row.banned) return res.status(403).json({ error: 'This account has been banned.' });
     await createSession(res, row.id);
-    res.json({ user: publicProfile(await stmtGetUserById.get(row.id)) });
+    const userRow = await stmtGetUserById.get(row.id);
+    const signinProfile = publicProfile(userRow);
+    signinProfile.canGiveTags = await isOriginalOwner(row.id);
+    res.json({ user: signinProfile });
   });
 
   app.post('/api/signout', async (req, res) => {
@@ -406,9 +415,11 @@ async function main() {
     res.json({ ok: true });
   });
 
-  app.get('/api/me', (req, res) => {
+  app.get('/api/me', async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Not signed in.' });
-    res.json({ user: publicProfile(req.user) });
+    const meProfile = publicProfile(req.user);
+    meProfile.canGiveTags = await isOriginalOwner(req.user.id);
+    res.json({ user: meProfile });
   });
 
   // -------------------------------------------------------------------------
@@ -485,7 +496,9 @@ async function main() {
     }
     const user = await stmtGetUserById.get(req.user.id);
     if (newPassword) await createSession(res, user.id); // keep this device signed in
-    res.json({ user: publicProfile(user) });
+    const updatedProfile = publicProfile(user);
+    updatedProfile.canGiveTags = await isOriginalOwner(user.id);
+    res.json({ user: updatedProfile });
   });
 
   // -------------------------------------------------------------------------
@@ -584,6 +597,11 @@ async function main() {
         return res.json({ ok: true, username: target, self: targetUser.id === req.user.id });
       }
       case 'tag': {
+        // Only the original owner (first registered account) can give tags.
+        const ownerRow = await db.prepare('SELECT id FROM users ORDER BY id ASC LIMIT 1').get();
+        if (!ownerRow || ownerRow.id !== req.user.id) {
+          return res.status(403).json({ error: 'Only the owner can give tags.' });
+        }
         const target = String(req.body.target || '').trim();
         const tag = String(req.body.tag || '').toLowerCase();
         const grant = req.body.grant !== false; // default to granting
