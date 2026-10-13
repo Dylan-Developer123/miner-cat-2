@@ -480,11 +480,15 @@ async function main() {
     let { currentPassword, username, displayName, newPassword } = req.body || {};
     if (typeof username === 'string') username = username.trim();
     const full = await db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
-    if (!full || !bcrypt.compareSync(String(currentPassword || ''), full.password_hash)) {
-      return res.status(401).json({ error: 'Current password is incorrect.' });
-    }
     const nextUsername = username !== undefined ? username : full.username;
     const nextDisplay = displayName !== undefined ? displayName : full.display_name;
+    const changingSensitive = nextUsername !== full.username || (newPassword !== undefined && newPassword !== '');
+    // Only require current password when changing username or password
+    if (changingSensitive) {
+      if (!full || !bcrypt.compareSync(String(currentPassword || ''), full.password_hash)) {
+        return res.status(401).json({ error: 'Current password is incorrect.' });
+      }
+    }
     if (!validUsername(nextUsername)) return res.status(400).json({ error: 'Username must be 3-32 chars (letters, numbers, spaces, . _ -).' });
     if (!validDisplayName(nextDisplay)) return res.status(400).json({ error: 'Display name must be 1-24 characters.' });
     if (newPassword !== undefined && newPassword !== '' && !validPassword(newPassword)) {

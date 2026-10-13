@@ -1073,7 +1073,10 @@ window.addEventListener('keydown', (e) => {
   }
 });
 $('btn-save').onclick = () => saveNow(false);
-$('btn-signout').onclick = async () => { await saveNow(true); await api.signout(); location.reload(); };
+$('btn-signout').onclick = async () => {
+  if (!confirm('Log out?')) return;
+  await saveNow(true); await api.signout(); location.reload();
+};
 $('btn-settings').onclick = () => {
   $('set-displayname').value = S.user.displayName;
   $('set-username').value = S.user.username;
@@ -1082,7 +1085,10 @@ $('btn-settings').onclick = () => {
   $('settings-error').classList.add('hidden');
   $('settings-overlay').classList.remove('hidden');
 };
-$('btn-close-settings').onclick = () => $('settings-overlay').classList.add('hidden');
+// Click outside the settings modal to close it
+$('settings-overlay').addEventListener('click', (e) => {
+  if (e.target.id === 'settings-overlay') $('settings-overlay').classList.add('hidden');
+});
 // Theme changer (light/dark), persisted in localStorage
 function setTheme(dark) {
   document.body.classList.toggle('dark', dark);
