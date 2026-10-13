@@ -553,6 +553,19 @@ async function main() {
         await stmtUpdateUserCoins.run(coinsFromSave(tsave), targetUser.id);
         return res.json({ ok: true, username: target, coins: giftCoins, gems: giftGems });
       }
+      case 'reset': {
+        const target = String(req.body.target || '').trim();
+        if (!target) return res.status(400).json({ error: 'Username required.' });
+        const targetUser = await db.prepare('SELECT id, is_admin FROM users WHERE username = ?').get(target);
+        if (!targetUser) return res.status(404).json({ error: 'Account not found.' });
+        if (targetUser.is_admin && targetUser.id !== req.user.id) {
+          return res.status(400).json({ error: 'Cannot reset another admin.' });
+        }
+        await db.prepare('DELETE FROM saves WHERE user_id = ?').run(targetUser.id);
+        await db.prepare('UPDATE users SET coins = 0 WHERE id = ?').run(targetUser.id);
+        await db.prepare('DELETE FROM sessions WHERE user_id = ?').run(targetUser.id); // force re-login
+        return res.json({ ok: true, username: target, self: targetUser.id === req.user.id });
+      }
       default:
         return res.status(400).json({ error: 'Unknown admin command.' });
     }

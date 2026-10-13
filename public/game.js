@@ -912,6 +912,25 @@ document.getElementById('gift-btn').addEventListener('click', async () => {
     document.getElementById('gift-gems').value = '';
   } catch (ex) { toast(ex.message); }
 });
+// Reset a player's progress (admin)
+async function resetProgress(target, isSelf) {
+  if (!target && !isSelf) { toast('Enter a username.'); return; }
+  const label = isSelf ? 'your own' : `"${target}"'s`;
+  if (!confirm(`Reset ${label} progress? Coins, gems, upgrades, achievements — everything. Cannot be undone.`)) return;
+  if (!confirm(`Really wipe ${label} progress?`)) return;
+  try {
+    const r = await api.admin('reset', { target: isSelf ? S.user.username : target });
+    toast(`Reset ${r.username}'s progress.`);
+    if (r.self) location.reload(); // re-login with fresh save
+    else document.getElementById('reset-input').value = '';
+  } catch (ex) { toast(ex.message); }
+}
+document.getElementById('reset-btn').addEventListener('click', () => {
+  resetProgress(document.getElementById('reset-input').value.trim(), false);
+});
+document.getElementById('reset-self-btn').addEventListener('click', () => {
+  resetProgress(null, true);
+});
 async function checkBroadcast() {
   try {
     const r = await fetch('/api/broadcast').then((x) => x.json());
