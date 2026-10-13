@@ -412,19 +412,6 @@ function goToSpawn(sell = true) {
   S.vx = 0; S.vy = 0; S.health = MAX_HP;
   refreshStageHeader(); refreshUI();
 }
-function goToTop() {
-  // Sell backpack, then teleport to the surface of the CURRENT stage.
-  let total = 0;
-  for (const [type, n] of Object.entries(S.backpack)) total += (BLOCKS[type]?.value || 0) * n;
-  if (total > 0) { S.coins += total; toast(`Sold backpack for ${total} coins!`); }
-  S.backpack = {};
-  unlockAch('coin-starter');
-  unlockAch('coin-tycoon');
-  S.px = SPAWN_X + 0.5; S.py = -0.5;
-  S.vx = 0; S.vy = 0; S.health = MAX_HP;
-  refreshStageHeader(); refreshUI();
-  toast(`Back to the surface (stage ${S.stage})!`);
-}
 function unlockAch(id) {
   if (id === 'rock-rookie' && S.blocksMined < 10) return;
   if (id === 'block-buster' && S.blocksMined < 100) return;
@@ -855,7 +842,6 @@ function loop(t) {
 /* ------------------------------- wiring -------------------------------- */
 $('btn-sell').onclick = sellBackpack;
 $('btn-spawn').onclick = () => goToSpawn(true);
-$('btn-top').onclick = () => goToTop();
 document.getElementById('btn-mp').addEventListener('click', () => {
   if (S.inMp) mpLeave(); else mpJoin();
 });
