@@ -534,8 +534,8 @@ async function main() {
         if (armor !== undefined) save.armorLevel = clamp(armor, 1, 50, save.armorLevel || 1);
         if (bag !== undefined) save.bagLevel = clamp(bag, 1, 50, save.bagLevel || 1);
         break;
-      case 'stage25':
-        save.stage = 25;
+      case 'stage100':
+        save.stage = 100;
         save.depth = 0;
         save.playerX = 10;
         save.playerY = 0;

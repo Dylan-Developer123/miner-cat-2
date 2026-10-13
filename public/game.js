@@ -11,7 +11,7 @@
 const COLS = 21;                 // world width in blocks
 const SPAWN_X = 10;              // middle column (0-based)
 const STAGE_ROWS = 50;           // rows per stage (stages 1..24)
-const STAGES = 25;
+const STAGES = 100;
 const SAVE_INTERVAL_MS = 60 * 1000;
 const LAVA_DPS = 25;
 const MAX_HP = 100;
@@ -25,6 +25,17 @@ const STAGE_NAMES = [
   'Ember Deep', 'Fathom Falls', 'Core Corridors', 'Abyssal Plain',
   'The Endless Dark',
 ];
+// Generate names for stages 26-100
+{
+  const adj = ['Crimson', 'Azure', 'Silent', 'Howling', 'Glimmering', 'Ancient', 'Frozen', 'Burning', 'Whispering', 'Thundering',
+    'Misty', 'Radiant', 'Umbral', 'Prismatic', 'Jagged', 'Serene', 'Savage', 'Luminous', 'Hollow', 'Eternal',
+    'Forgotten', 'Sunken', 'Rising', 'Falling', 'Twisted'];
+  const noun = ['Depths', 'Tunnels', 'Caverns', 'Mines', 'Shafts', 'Grotto', 'Abyss', 'Hollow', 'Pass', 'Corridors',
+    'Warrens', 'Vaults', 'Pits', 'Labyrinth', 'Sanctum'];
+  for (let i = 26; i <= 100; i++) {
+    STAGE_NAMES.push(`${adj[(i * 7) % adj.length]} ${noun[(i * 13) % noun.length]} ${i}`);
+  }
+}
 
 // Block definitions: hp (hits), coin value, display name, base color.
 const BLOCKS = {
@@ -148,7 +159,7 @@ function stageSeed(stage) {
   return S.seeds[stage];
 }
 // Rarity multiplier: ores get progressively rarer in deeper stages.
-function rarityMult(stage) { return Math.pow(0.92, stage - 1); }
+function rarityMult(stage) { return Math.pow(0.985, stage - 1); }
 
 function genBlock(stage, x, y) {
   if (y < 0) return 'air';
@@ -239,11 +250,11 @@ function movePlayer(dt) {
   if (ty >= rows && S.stage < STAGES) {
     S.stage++; S.py = -1.5; S.vy = 0;
     unlockAch('stage-explorer');
-    toast(`Stage ${S.stage} / 25 · ${STAGE_NAMES[S.stage - 1]}`);
+    toast(`Stage ${S.stage} / 100 · ${STAGE_NAMES[S.stage - 1]}`);
     refreshStageHeader();
   } else if (S.py < -4 && S.stage > 1) {
     S.stage--; S.py = STAGE_ROWS - 1.5; S.vy = 0;
-    toast(`Stage ${S.stage} / 25 · ${STAGE_NAMES[S.stage - 1]}`);
+    toast(`Stage ${S.stage} / 100 · ${STAGE_NAMES[S.stage - 1]}`);
     refreshStageHeader();
   }
   // clamp inside borders
@@ -706,7 +717,7 @@ function toast(msg) {
   toastTimer = setTimeout(() => el.classList.add('hidden'), 2200);
 }
 function refreshStageHeader() {
-  $('stage-title').textContent = `Stage ${S.stage} / 25 · ${STAGE_NAMES[S.stage - 1]}`;
+  $('stage-title').textContent = `Stage ${S.stage} / 100 · ${STAGE_NAMES[S.stage - 1]}`;
   $('stage-sub').textContent = S.stage === 1 ? 'Surface flag · Stage 1 begins below'
     : S.stage === 25 ? 'Endless depths below…' : `Stage ${S.stage} begins below`;
 }
