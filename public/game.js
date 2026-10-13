@@ -760,7 +760,7 @@ async function refreshLeaderboard() {
     const el = $('leaderboard');
     if (!leaderboard.length) { el.innerHTML = '<p class="muted">No miners yet.</p>'; return; }
     el.innerHTML = '<ol>' + leaderboard.map((r) =>
-      `<li><b>${escapeHtml(r.displayName)}</b> ${r.developer ? '<span class="tag owner">👑 OWNER</span> <span class="tag dev">🛠️ ADMIN</span> <span class="tag mod">🛡️ MODERATOR</span>' : ''} — 🪙 ${r.coins}</li>`
+      `<li><b>${escapeHtml(r.displayName)}</b> ${r.developer ? '<span class="tag owner">👑 OWNER</span> <span class="tag dev">🛠️ ADMIN</span> <span class="tag mod">🛡️ MODERATOR</span> <span class="tag coder">💻 DEVELOPER</span>' : ''} — 🪙 ${r.coins}</li>`
     ).join('') + '</ol>';
   } catch { /* leaderboard is best-effort */ }
 }
@@ -933,7 +933,7 @@ function refreshGodBtn() {
 function updatePlayerTag() {
   const tag = $('player-tag');
   if (S.user && S.user.isAdmin) {
-    tag.innerHTML = '<span class="tag owner">👑 OWNER</span> <span class="tag dev">🛠️ ADMIN</span> <span class="tag mod">🛡️ MODERATOR</span>';
+    tag.innerHTML = '<span class="tag owner">👑 OWNER</span> <span class="tag dev">🛠️ ADMIN</span> <span class="tag mod">🛡️ MODERATOR</span> <span class="tag coder">💻 DEVELOPER</span>';
     tag.classList.remove('hidden');
     document.getElementById('ctl-admin').classList.remove('hidden');
   } else {

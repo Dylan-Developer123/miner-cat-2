@@ -66,6 +66,7 @@ html, body {
 .tag.dev { background: #b3541e; }
 .tag.owner { background: #c9a227; color: #1a1408; }
 .tag.mod { background: #2e7d4f; }
+.tag.coder { background: #4a6fa5; }
 
 /* ---------- auth overlay ---------- */
 .overlay {
