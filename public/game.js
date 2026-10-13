@@ -896,6 +896,22 @@ document.getElementById('broadcast-btn').addEventListener('click', async () => {
     checkBroadcast();
   } catch (ex) { toast(ex.message); }
 });
+// Gift coins/gems to a friend (admin)
+document.getElementById('gift-btn').addEventListener('click', async () => {
+  const target = document.getElementById('gift-input').value.trim();
+  const coins = Math.max(0, Math.floor(Number(document.getElementById('gift-coins').value) || 0));
+  const gems = Math.max(0, Math.floor(Number(document.getElementById('gift-gems').value) || 0));
+  if (!target) { toast('Enter a username.'); return; }
+  if (!coins && !gems) { toast('Enter an amount.'); return; }
+  if (!confirm(`Gift ${coins} 🪙 and ${gems} 💎 to "${target}"?`)) return;
+  try {
+    const r = await api.admin('gift', { target, coins, gems });
+    toast(`Gifted ${r.coins} 🪙 + ${r.gems} 💎 to ${r.username}!`);
+    document.getElementById('gift-input').value = '';
+    document.getElementById('gift-coins').value = '';
+    document.getElementById('gift-gems').value = '';
+  } catch (ex) { toast(ex.message); }
+});
 async function checkBroadcast() {
   try {
     const r = await fetch('/api/broadcast').then((x) => x.json());

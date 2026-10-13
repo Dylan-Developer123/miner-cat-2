@@ -537,6 +537,22 @@ async function main() {
         }
         return res.json({ ok: true, message: msg });
       }
+      case 'gift': {
+        const target = String(req.body.target || '').trim();
+        if (!target) return res.status(400).json({ error: 'Username required.' });
+        const giftCoins = clamp(req.body.coins, 0, 1e9, 0);
+        const giftGems = clamp(req.body.gems, 0, 1e9, 0);
+        if (!giftCoins && !giftGems) return res.status(400).json({ error: 'Enter an amount.' });
+        const targetUser = await db.prepare('SELECT id FROM users WHERE username = ?').get(target);
+        if (!targetUser) return res.status(404).json({ error: 'Account not found.' });
+        const srow = await stmtGetSave.get(targetUser.id);
+        const tsave = srow ? JSON.parse(srow.save_json) : {};
+        tsave.coins = clamp((tsave.coins || 0) + giftCoins, 0, 1e9, 0);
+        tsave.gems = clamp((tsave.gems || 0) + giftGems, 0, 1e9, 0);
+        await stmtUpsertSave.run(targetUser.id, JSON.stringify(tsave));
+        await stmtUpdateUserCoins.run(coinsFromSave(tsave), targetUser.id);
+        return res.json({ ok: true, username: target, coins: giftCoins, gems: giftGems });
+      }
       default:
         return res.status(400).json({ error: 'Unknown admin command.' });
     }
