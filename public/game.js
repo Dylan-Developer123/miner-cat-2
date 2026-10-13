@@ -533,6 +533,60 @@ function drawBlock(bx, by, type, t) {
     ctx.fillRect(px + TILE * 0.3, py + TILE * 0.3, TILE * 0.12, TILE * 0.12);
     ctx.fillRect(px + TILE * 0.6, py + TILE * 0.6, TILE * 0.12, TILE * 0.12);
   }
+  // HIGH graphics: realistic details + waving grass
+  if (GFX === 'high') {
+    if (type === 'grass') {
+      // Waving grass blades on top
+      ctx.strokeStyle = '#4a9e3f';
+      ctx.lineWidth = Math.max(1.5, TILE * 0.04);
+      for (let i = 0; i < 5; i++) {
+        const gx = px + TILE * (0.1 + i * 0.2);
+        const sway = Math.sin(t / 300 + bx * 2 + i) * TILE * 0.08;
+        const gh = TILE * (0.25 + hash4(i, bx, by, 7) * 0.2);
+        ctx.beginPath();
+        ctx.moveTo(gx, py + 2);
+        ctx.quadraticCurveTo(gx + sway * 0.5, py + 2 - gh * 0.6, gx + sway, py + 2 - gh);
+        ctx.stroke();
+      }
+    }
+    if (type === 'stone') {
+      // Cracks
+      ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+      ctx.lineWidth = Math.max(1, TILE * 0.03);
+      const r1 = hash4(bx, by, 1, 5);
+      ctx.beginPath();
+      ctx.moveTo(px + TILE * 0.2, py + TILE * (0.3 + r1 * 0.2));
+      ctx.lineTo(px + TILE * 0.6, py + TILE * (0.5 + r1 * 0.2));
+      ctx.lineTo(px + TILE * 0.8, py + TILE * (0.7 + r1 * 0.1));
+      ctx.stroke();
+    }
+    if (type === 'dirt') {
+      // Pebbles
+      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+      for (let i = 0; i < 3; i++) {
+        const prx = px + hash4(i, bx, by, 11) * TILE * 0.8 + TILE * 0.1;
+        const pry = py + hash4(bx, i, by, 13) * TILE * 0.8 + TILE * 0.1;
+        ctx.beginPath();
+        ctx.arc(prx, pry, Math.max(1.5, TILE * 0.05), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    if (type === 'gold' || type === 'diamond') {
+      // Animated glint
+      const glint = (Math.sin(t / 500 + bx * 3 + by * 2) + 1) / 2;
+      ctx.fillStyle = `rgba(255,255,255,${0.2 + glint * 0.3})`;
+      ctx.fillRect(px + TILE * 0.15, py + TILE * 0.15, TILE * 0.2, TILE * 0.08);
+    }
+    if (type === 'coal') {
+      // Shiny specks
+      ctx.fillStyle = 'rgba(255,255,255,0.25)';
+      for (let i = 0; i < 2; i++) {
+        const cx = px + hash4(bx, by, i, 17) * TILE * 0.7 + TILE * 0.15;
+        const cy = py + hash4(by, bx, i, 19) * TILE * 0.7 + TILE * 0.15;
+        ctx.fillRect(cx, cy, Math.max(2, TILE * 0.06), Math.max(2, TILE * 0.06));
+      }
+    }
+  }
   // mining cracks
   const key = S.stage + ':' + bx + ':' + by;
   if (S.dmg.has(key)) {
