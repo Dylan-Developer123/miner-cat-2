@@ -118,6 +118,8 @@ const S = {
   achievements: [],
   seeds: {},                     // stage -> seed
   cleared: new Set(),            // "stage:x:y" of mined blocks
+  placed: new Map(),             // "stage:x:y" -> blockType of placed blocks
+  selectedBlock: null,           // block type selected in inventory for placing
   // transient:
   vx: 0, vy: 0, onGround: false, facing: 1,
   inMp: false,                   // in multiplayer world?
@@ -140,6 +142,7 @@ function stateToSave() {
     px: S.px, py: S.py, health: S.health, god: !!S.god,
     backpack: S.backpack, achievements: S.achievements,
     seeds: S.seeds, cleared: [...S.cleared].slice(-20000),
+    placed: [...S.placed.entries()].slice(-5000),
   };
 }
 function loadSave(save) {
@@ -154,6 +157,7 @@ function loadSave(save) {
   S.achievements = Array.isArray(save.achievements) ? save.achievements : [];
   S.seeds = save.seeds || {};
   S.cleared = new Set(Array.isArray(save.cleared) ? save.cleared : []);
+  S.placed = new Map(Array.isArray(save.placed) ? save.placed : []);
   S.dmg.clear();
 }
 
@@ -188,6 +192,8 @@ function blockAt(stage, x, y) {
   // Admin's Lounge: flat wooden floor, no mining
   if (stage === LOUNGE_STAGE) return y === 0 ? 'wood' : 'air';
   const key = stage + ':' + x + ':' + y;
+  // Placed blocks
+  if (S.placed.has(key)) return S.placed.get(key);
   // Multiplayer and lounge worlds use shared cleared set
   if (stage === MP_STAGE || stage === LOUNGE_STAGE) return MP.cleared.has(key) ? 'air' : genBlock(stage, x, y);
   if (S.cleared.has(key)) return 'air';
@@ -348,6 +354,8 @@ function updateMining(dt) {
     S.dmg.delete(key);
     if (S.inMp || S.inLounge) {
       MP.cleared.add(key);
+    } else if (S.placed.has(key)) {
+      S.placed.delete(key); // mined a placed block — just remove it
     } else {
       S.cleared.add(key);
     }
@@ -802,6 +810,52 @@ function drawChair(x, floorY, dir) {
   ctx.fillRect(x + w / 2 - 6, y + h * 0.55 + TILE * 0.35, 4, floorY - (y + h * 0.55 + TILE * 0.35));
 }
 
+/* ------------------------------ inventory ---------------------------- */
+const BLOCK_ICONS = { dirt: '🟫', stone: '⬜', coal: '⬛', copper: '🟧', iron: '🔩', gold: '🟨', diamond: '💎', grass: '🟩', lava: '🟥' };
+function renderInventory() {
+  const el = document.getElementById('inv-slots');
+  if (!el) return;
+  el.innerHTML = '';
+  const types = Object.keys(S.backpack).filter((t) => S.backpack[t] > 0);
+  if (types.length === 0) {
+    el.innerHTML = '<div class="inv-slot empty"><span class="inv-icon">🎒</span><span class="inv-count">Empty</span></div>';
+    return;
+  }
+  for (const type of types) {
+    const slot = document.createElement('div');
+    slot.className = 'inv-slot' + (S.selectedBlock === type ? ' selected' : '');
+    slot.innerHTML = `<span class="inv-icon">${BLOCK_ICONS[type] || '🧱'}</span><span class="inv-count">${S.backpack[type]}</span>`;
+    slot.title = BLOCKS[type]?.name || type;
+    slot.onclick = () => {
+      S.selectedBlock = S.selectedBlock === type ? null : type;
+      renderInventory();
+      toast(S.selectedBlock ? `Placing: ${BLOCKS[type]?.name || type} — tap empty space` : 'Place mode off');
+    };
+    el.appendChild(slot);
+  }
+}
+function tryPlaceBlock(bx, by) {
+  if (!S.selectedBlock) return false;
+  const type = S.selectedBlock;
+  if ((S.backpack[type] || 0) <= 0) { S.selectedBlock = null; renderInventory(); return false; }
+  // Can't place where a block already exists, or inside the player
+  if (blockAt(S.stage, bx, by) !== 'air') return false;
+  const ptx = Math.floor(S.px), pty = Math.floor(S.py);
+  if ((bx === ptx && by === pty) || (bx === ptx && by === pty - 1)) {
+    toast("Can't place inside yourself!");
+    return false;
+  }
+  // Must be within reach (3 tiles)
+  const dx = Math.abs(bx + 0.5 - S.px), dy = Math.abs(by + 0.5 - S.py);
+  if (dx > 3.5 || dy > 3.5) { toast('Too far!'); return false; }
+  const key = S.stage + ':' + bx + ':' + by;
+  S.placed.set(key, type);
+  S.backpack[type]--;
+  if (S.backpack[type] <= 0) { delete S.backpack[type]; S.selectedBlock = null; }
+  renderInventory(); refreshUI();
+  return true;
+}
+
 /* -------------------------------- input -------------------------------- */
 const input = { left: false, right: false, mineHeld: false, jumpQueued: false };
 const pointer = { active: false, x: 0, y: 0 };
@@ -848,6 +902,11 @@ document.getElementById('ctl-admin').addEventListener('click', () => togglePanel
 
 canvas.addEventListener('pointerdown', (e) => {
   pointer.active = true; pointer.x = e.clientX; pointer.y = e.clientY;
+  // If a block is selected in inventory, try to place it instead of mining
+  if (S.selectedBlock) {
+    const t = screenToTile(e.clientX, e.clientY);
+    if (tryPlaceBlock(t.x, t.y)) return;
+  }
   input.mineHeld = true;
   canvas.setPointerCapture(e.pointerId);
 });
@@ -887,6 +946,7 @@ function refreshUI() {
   $('stat-blocks').textContent = S.blocksMined;
   $('stat-pick').textContent = S.pickLevel;
   $('stat-hp').textContent = Math.ceil(S.health);
+  renderInventory();
   $('health-fill').style.width = (S.health / MAX_HP * 100) + '%';
   $('health-fill').style.background = S.health > 50 ? 'var(--green)' : S.health > 25 ? 'var(--accent)' : 'var(--red)';
   $('hud-text').textContent = `Stage ${S.stage} · Depth ${S.depth} · Bag ${bagCount()}/${bagCapacity()}`;
