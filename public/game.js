@@ -746,6 +746,15 @@ function loop(t) {
   if (!S.started) return;
   const dt = Math.min(0.05, (t - lastT) / 1000 || 0.016);
   lastT = t;
+  // TEMP DEBUG overlay (remove after diagnosis)
+  let dbg = document.getElementById('dbg');
+  if (!dbg) {
+    dbg = document.createElement('div');
+    dbg.id = 'dbg';
+    dbg.style.cssText = 'position:fixed;top:0;left:0;z-index:9999;background:#000;color:#0f0;font:11px monospace;padding:6px;white-space:pre;';
+    document.body.appendChild(dbg);
+  }
+  dbg.textContent = `win ${window.innerWidth}x${window.innerHeight}\ncss ${canvas.clientWidth}x${canvas.clientHeight}\nbuf ${canvas.width}x${canvas.height}\nTILE ${TILE} dpr ${dpr}`;
   movePlayer(dt);
   updateMining(dt);
   // smooth camera follows player downward (and slightly horizontally)
