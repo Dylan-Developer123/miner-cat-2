@@ -119,6 +119,7 @@ const S = {
   // transient:
   vx: 0, vy: 0, onGround: false, facing: 1,
   inMp: false,                   // in multiplayer world?
+  inLounge: false,               // in admin lounge?
   dmg: new Map(),                // "stage:x:y" -> hp remaining
   lastHurtAt: 0,
   started: false,
@@ -183,8 +184,8 @@ function blockAt(stage, x, y) {
   if (stage === 1 && x === SPAWN_X && y === 0) return 'bedrock'; // spawn block
   if (y < 0) return 'air';
   const key = stage + ':' + x + ':' + y;
-  // Multiplayer world uses shared cleared set
-  if (stage === 1001) return MP.cleared.has(key) ? 'air' : genBlock(stage, x, y);
+  // Multiplayer and lounge worlds use shared cleared set
+  if (stage === 1001 || stage === LOUNGE_STAGE) return MP.cleared.has(key) ? 'air' : genBlock(stage, x, y);
   if (S.cleared.has(key)) return 'air';
   return genBlock(stage, x, y);
 }
@@ -341,13 +342,13 @@ function updateMining(dt) {
   const left = remain - tapPower();
   if (left <= 0) {
     S.dmg.delete(key);
-    if (S.inMp) {
+    if (S.inMp || S.inLounge) {
       MP.cleared.add(key);
     } else {
       S.cleared.add(key);
     }
-    // Tell other players about the break (multiplayer world only)
-    if (MP.ws && MP.ws.readyState === 1 && S.inMp) {
+    // Tell other players about the break (multiplayer/lounge only)
+    if (MP.ws && MP.ws.readyState === 1 && (S.inMp || S.inLounge)) {
       MP.ws.send(JSON.stringify({ t: 'break', stage: S.stage, x: t.x, y: t.y }));
     }
     S.blocksMined++;
@@ -716,6 +717,11 @@ function toast(msg) {
   toastTimer = setTimeout(() => el.classList.add('hidden'), 2200);
 }
 function refreshStageHeader() {
+  if (S.inLounge) {
+    $('stage-title').textContent = `🛋️ Admin Lounge`;
+    $('stage-sub').textContent = 'Admins only!';
+    return;
+  }
   if (S.inMp) {
     $('stage-title').textContent = `🌐 Multiplayer World`;
     $('stage-sub').textContent = 'Mining with friends!';
@@ -844,6 +850,10 @@ $('btn-sell').onclick = sellBackpack;
 $('btn-spawn').onclick = () => goToSpawn(true);
 document.getElementById('btn-mp').addEventListener('click', () => mpJoin());
 document.getElementById('btn-solo').addEventListener('click', () => mpLeave());
+document.getElementById('btn-lounge').addEventListener('click', () => {
+  if (S.inLounge) loungeLeave(); else loungeJoin();
+});
+document.getElementById('btn-voice').addEventListener('click', () => voiceToggle());
 // Touch controls: hidden on keyboard/mouse devices via CSS; show if touch is used.
 const controlsEl = document.getElementById('controls');
 window.addEventListener('touchstart', () => controlsEl.classList.add('force-show'), { passive: true });
@@ -1022,8 +1032,10 @@ function updatePlayerTag() {
   const hasTag = S.user && (S.user.isOwner || S.user.isAdmin || S.user.isModerator || S.user.isDeveloper);
   if (hasTag) {
     document.getElementById('ctl-admin').classList.remove('hidden');
+    document.getElementById('btn-lounge').classList.remove('hidden');
   } else {
     document.getElementById('ctl-admin').classList.add('hidden');
+    document.getElementById('btn-lounge').classList.add('hidden');
     $('admin-panel').classList.add('hidden');
   }
   // Tag gifting UI is owner-only
@@ -1035,8 +1047,38 @@ function updatePlayerTag() {
 
 /* ------------------------------ multiplayer ---------------------------- */
 const MP = { ws: null, id: null, players: new Map(), lastPos: 0, cleared: new Set(), soloStage: 1, soloX: 10.5, soloY: -0.5 };
+// Admin lounge — separate world (stage 1002) for admins only
+const LOUNGE_STAGE = 1002;
+function loungeJoin() {
+  if (S.inLounge) return;
+  if (!S.user || !(S.user.isAdmin || S.user.isModerator || S.user.isDeveloper || S.user.isOwner)) {
+    toast('Admins only!');
+    return;
+  }
+  if (S.inMp) mpLeave();
+  // Remember solo position
+  MP.soloStage = S.stage; MP.soloX = S.px; MP.soloY = S.py;
+  S.inLounge = true;
+  S.stage = LOUNGE_STAGE;
+  S.px = 10.5; S.py = -0.5; S.vx = 0; S.vy = 0;
+  S.dmg.clear();
+  refreshStageHeader(); refreshUI();
+  toast('🛋️ Welcome to the admin lounge!');
+  document.getElementById('btn-voice').classList.remove('hidden');
+}
+function loungeLeave() {
+  if (!S.inLounge) return;
+  voiceLeave();
+  S.inLounge = false;
+  S.stage = MP.soloStage; S.px = MP.soloX; S.py = MP.soloY;
+  S.vx = 0; S.vy = 0; S.dmg.clear();
+  refreshStageHeader(); refreshUI();
+  toast('Left the lounge.');
+  document.getElementById('btn-voice').classList.add('hidden');
+}
 function mpJoin() {
   if (S.inMp) return;
+  if (S.inLounge) loungeLeave();
   // Remember solo position
   MP.soloStage = S.stage; MP.soloX = S.px; MP.soloY = S.py;
   S.inMp = true;
@@ -1083,13 +1125,18 @@ function mpConnect() {
       const p = MP.players.get(msg.id);
       if (p) { p.x = msg.x; p.y = msg.y; p.stage = msg.stage; }
     } else if (msg.t === 'break') {
-      // Someone else broke a block in the multiplayer world — remove it locally (no loot)
-      if (msg.stage === 1001 && S.inMp) MP.cleared.add(msg.stage + ':' + msg.x + ':' + msg.y);
+      // Someone else broke a block in multiplayer/lounge — remove it locally (no loot)
+      if ((msg.stage === 1001 || msg.stage === LOUNGE_STAGE) && (S.inMp || S.inLounge)) {
+        MP.cleared.add(msg.stage + ':' + msg.x + ':' + msg.y);
+      }
+    } else if (msg.t === 'voice-join' || msg.t === 'voice-offer' || msg.t === 'voice-answer' || msg.t === 'voice-ice' || msg.t === 'voice-leave') {
+      msg.from = msg.from || msg.id;
+      voiceHandle(msg);
     }
   };
 }
 function mpSendPos() {
-  if (!MP.ws || MP.ws.readyState !== 1 || !S.inMp) return;
+  if (!MP.ws || MP.ws.readyState !== 1 || (!S.inMp && !S.inLounge)) return;
   const now = performance.now();
   if (now - MP.lastPos < 100) return; // 10 updates/sec max
   MP.lastPos = now;
@@ -1099,11 +1146,12 @@ function updateMpCount() {
   const el = document.getElementById('mp-count');
   if (el) el.textContent = MP.players.size + 1;
 }
-// Draw other players (multiplayer world only)
+// Draw other players (multiplayer/lounge only)
 function drawMpPlayers() {
-  if (!S.inMp) return;
+  if (!S.inMp && !S.inLounge) return;
+  const myStage = S.inLounge ? LOUNGE_STAGE : 1001;
   for (const p of MP.players.values()) {
-    if (p.stage !== 1001) continue;
+    if (p.stage !== myStage) continue;
     const sx = (p.x - camX) * TILE, sy = (p.y - camY) * TILE;
     if (sx < -50 || sy < -50 || sx > W + 50 || sy > H + 50) continue;
     // Simple cat: orange body with name
@@ -1131,8 +1179,99 @@ function drawMpPlayers() {
   }
 }
 
-/* --------------------------------- boot -------------------------------- */
-let authMode = 'signup';
+/* ------------------------------ voice chat ---------------------------- */
+const Voice = { on: false, stream: null, peers: new Map(), audioEls: new Map() };
+async function voiceToggle() {
+  if (Voice.on) { voiceLeave(); return; }
+  if (!S.inLounge) { toast('Join the lounge first!'); return; }
+  try {
+    Voice.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e) {
+    toast('Microphone blocked.');
+    return;
+  }
+  Voice.on = true;
+  document.getElementById('btn-voice').textContent = '🔴 Mute';
+  // Tell others we're on voice
+  if (MP.ws && MP.ws.readyState === 1) MP.ws.send(JSON.stringify({ t: 'voice-join' }));
+  toast('🎤 Voice on!');
+}
+function voiceLeave() {
+  if (!Voice.on) return;
+  Voice.on = false;
+  if (MP.ws && MP.ws.readyState === 1) MP.ws.send(JSON.stringify({ t: 'voice-leave' }));
+  for (const [id, pc] of Voice.peers) { try { pc.close(); } catch (e) {} }
+  Voice.peers.clear();
+  for (const [id, el] of Voice.audioEls) { try { el.remove(); } catch (e) {} }
+  Voice.audioEls.clear();
+  if (Voice.stream) { Voice.stream.getTracks().forEach((t) => t.stop()); Voice.stream = null; }
+  const vb = document.getElementById('btn-voice');
+  if (vb) vb.textContent = '🎤 Voice';
+}
+function voiceGetPeer(id, createOffer) {
+  if (Voice.peers.has(id)) return Voice.peers.get(id);
+  const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+  Voice.peers.set(id, pc);
+  if (Voice.stream) Voice.stream.getTracks().forEach((t) => pc.addTrack(t, Voice.stream));
+  pc.onicecandidate = (e) => {
+    if (e.candidate && MP.ws && MP.ws.readyState === 1) {
+      MP.ws.send(JSON.stringify({ t: 'voice-ice', to: id, candidate: e.candidate }));
+    }
+  };
+  pc.ontrack = (e) => {
+    let el = Voice.audioEls.get(id);
+    if (!el) {
+      el = document.createElement('audio');
+      el.autoplay = true;
+      document.body.appendChild(el);
+      Voice.audioEls.set(id, el);
+    }
+    el.srcObject = e.streams[0];
+  };
+  pc.onconnectionstatechange = () => {
+    if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+      try { pc.close(); } catch (e) {}
+      Voice.peers.delete(id);
+      const el = Voice.audioEls.get(id);
+      if (el) { el.remove(); Voice.audioEls.delete(id); }
+    }
+  };
+  if (createOffer) {
+    pc.createOffer().then((offer) => pc.setLocalDescription(offer)).then(() => {
+      if (MP.ws && MP.ws.readyState === 1) {
+        MP.ws.send(JSON.stringify({ t: 'voice-offer', to: id, offer: pc.localDescription }));
+      }
+    }).catch(() => {});
+  }
+  return pc;
+}
+async function voiceHandle(msg) {
+  if (!Voice.on) return;
+  const from = msg.from;
+  if (msg.t === 'voice-join') {
+    // New voice user — we initiate the offer
+    voiceGetPeer(from, true);
+  } else if (msg.t === 'voice-offer') {
+    const pc = voiceGetPeer(from, false);
+    await pc.setRemoteDescription(new RTCSessionDescription(msg.offer));
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    if (MP.ws && MP.ws.readyState === 1) {
+      MP.ws.send(JSON.stringify({ t: 'voice-answer', to: from, answer: pc.localDescription }));
+    }
+  } else if (msg.t === 'voice-answer') {
+    const pc = Voice.peers.get(from);
+    if (pc) await pc.setRemoteDescription(new RTCSessionDescription(msg.answer)).catch(() => {});
+  } else if (msg.t === 'voice-ice') {
+    const pc = Voice.peers.get(from);
+    if (pc) await pc.addIceCandidate(new RTCIceCandidate(msg.candidate)).catch(() => {});
+  } else if (msg.t === 'voice-leave') {
+    const pc = Voice.peers.get(from);
+    if (pc) { try { pc.close(); } catch (e) {} Voice.peers.delete(from); }
+    const el = Voice.audioEls.get(from);
+    if (el) { el.remove(); Voice.audioEls.delete(from); }
+  }
+}
 function setAuthMode(mode) {
   authMode = mode;
   $('tab-signup').classList.toggle('active', mode === 'signup');

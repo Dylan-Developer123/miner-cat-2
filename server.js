@@ -710,6 +710,15 @@ async function main() {
       } else if (msg.t === 'break' && Number.isInteger(msg.x) && Number.isInteger(msg.y)) {
         // Relay block break to others on the same stage
         broadcast({ t: 'break', stage: msg.stage | 0, x: msg.x, y: msg.y, by: player.username }, userId);
+      } else if (msg.t === 'voice-join' || msg.t === 'voice-leave') {
+        // Voice presence — tell others in the lounge
+        broadcast({ t: msg.t, from: userId, username: player.username }, userId);
+      } else if ((msg.t === 'voice-offer' || msg.t === 'voice-answer' || msg.t === 'voice-ice') && msg.to) {
+        // Direct signaling messages
+        const target = online.get(msg.to);
+        if (target && target.ws.readyState === WebSocket.OPEN) {
+          target.ws.send(JSON.stringify({ ...msg, from: userId }));
+        }
       }
     });
 
