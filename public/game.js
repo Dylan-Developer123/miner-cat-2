@@ -389,7 +389,14 @@ let TILE = 40, camY = 0, dpr = 1;
 
 function resize() {
   dpr = Math.min(2, window.devicePixelRatio || 1);
-  const w = canvas.clientWidth, h = canvas.clientHeight;
+  // Set canvas size directly via JS (authoritative; bypasses any CSS/cache issues).
+  // Width: game column width, clamped to the viewport so it can never overflow.
+  const colW = document.getElementById('game-col').clientWidth || window.innerWidth;
+  const w = Math.max(100, Math.min(colW, window.innerWidth - 16));
+  // Height: fill the window while leaving room for topbar + controls.
+  const h = Math.max(280, Math.min(window.innerHeight * 0.72, window.innerHeight - 340));
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
   canvas.width = Math.round(w * dpr);
   canvas.height = Math.round(h * dpr);
   // zoom: entire 21-block width (borders) always visible; clamp tile size so
