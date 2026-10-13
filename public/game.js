@@ -660,11 +660,16 @@ bindHold(document.getElementById('ctl-left'), () => input.left = true, () => inp
 bindHold(document.getElementById('ctl-right'), () => input.right = true, () => input.right = false);
 bindHold(document.getElementById('ctl-jump'), () => input.jumpQueued = true, () => {});
 bindHold(document.getElementById('ctl-mine'), () => input.mineHeld = true, () => input.mineHeld = false);
-document.getElementById('ctl-ach').addEventListener('click', () => {
-  const panel = document.getElementById('ach-panel');
+function togglePanel(id) {
+  const panel = document.getElementById(id);
   panel.classList.toggle('hidden');
   if (!panel.classList.contains('hidden')) panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-});
+}
+document.getElementById('ctl-ach').addEventListener('click', () => togglePanel('ach-panel'));
+document.getElementById('ctl-bag').addEventListener('click', () => togglePanel('bag-panel'));
+document.getElementById('ctl-up').addEventListener('click', () => togglePanel('up-panel'));
+document.getElementById('ctl-lb').addEventListener('click', () => togglePanel('lb-panel'));
+document.getElementById('ctl-admin').addEventListener('click', () => togglePanel('admin-panel'));
 
 canvas.addEventListener('pointerdown', (e) => {
   pointer.active = true; pointer.x = e.clientX; pointer.y = e.clientY;
@@ -878,9 +883,10 @@ function updatePlayerTag() {
   if (S.user && S.user.isAdmin) {
     tag.textContent = 'OWNER · ADMIN';
     tag.classList.remove('hidden');
-    $('admin-panel').classList.remove('hidden');
+    document.getElementById('ctl-admin').classList.remove('hidden');
   } else {
     tag.classList.add('hidden');
+    document.getElementById('ctl-admin').classList.add('hidden');
     $('admin-panel').classList.add('hidden');
   }
 }

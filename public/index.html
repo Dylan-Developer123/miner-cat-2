@@ -74,6 +74,10 @@
         <button id="ctl-jump" class="ctl">JUMP</button>
         <button id="ctl-mine" class="ctl accent">MINE</button>
         <button id="ctl-ach" class="ctl" title="Achievements">🏆</button>
+        <button id="ctl-bag" class="ctl" title="Backpack">🎒</button>
+        <button id="ctl-up" class="ctl" title="Upgrades">⚒️</button>
+        <button id="ctl-lb" class="ctl" title="Leaderboard">📊</button>
+        <button id="ctl-admin" class="ctl hidden" title="Admin">🔧</button>
       </div>
       <p class="hint">A/D or arrows move · W/Up/Space jumps · Click a nearby block or hold MINE to dig.</p>
 <div id="ver" style="position:fixed;bottom:4px;right:8px;font-size:15px;font-weight:bold;color:#f5c542;z-index:9999;pointer-events:none;text-shadow:0 1px 3px #000;">v19</div>
@@ -81,13 +85,13 @@
 
     <!-- Side panels -->
     <aside id="side-col">
-      <section class="panel">
+      <section id="bag-panel" class="panel hidden">
         <div class="panel-head"><h3>🎒 Backpack</h3><span id="bag-count" class="muted">0 items</span></div>
         <div id="bag-grid" class="ore-grid"></div>
         <button id="btn-sell" class="btn primary wide">Sell backpack (<span id="sell-value">0</span> 🪙)</button>
       </section>
 
-      <section class="panel">
+      <section id="up-panel" class="panel hidden">
         <div class="panel-head"><h3>⬆️ Upgrades</h3></div>
         <div id="upgrade-list"></div>
       </section>
@@ -97,7 +101,7 @@
         <div id="ach-list"></div>
       </section>
 
-      <section class="panel">
+      <section id="lb-panel" class="panel hidden">
         <div class="panel-head"><h3>📊 Leaderboard</h3><span class="muted">by coins</span></div>
         <div id="leaderboard"><p class="muted">Loading…</p></div>
       </section>
