@@ -628,9 +628,13 @@ function render(t) {
   }
   // background
   if (S.stage === 1 && camY < 6) {
-    const g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, '#8fd0f0'); g.addColorStop(1, '#d8f0fa');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    if (GFX === 'low') {
+      ctx.fillStyle = '#a8d8f0'; ctx.fillRect(0, 0, W, H);
+    } else {
+      const g = ctx.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, '#8fd0f0'); g.addColorStop(1, '#d8f0fa');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    }
     // mountains
     ctx.fillStyle = '#b9d4c8';
     const baseY = (0 - camY) * TILE;
@@ -666,10 +670,14 @@ function render(t) {
 // Admin's Lounge — a cozy room with couch and chairs (no mining here)
 function drawLounge(t) {
   const W = canvas.width / dpr, H = canvas.height / dpr;
-  // Wall
-  const wg = ctx.createLinearGradient(0, 0, 0, H);
-  wg.addColorStop(0, '#3a2c22'); wg.addColorStop(1, '#2a2018');
-  ctx.fillStyle = wg; ctx.fillRect(0, 0, W, H);
+  // Wall (gradient on med/high, solid on low)
+  if (GFX === 'low') {
+    ctx.fillStyle = '#2a2018'; ctx.fillRect(0, 0, W, H);
+  } else {
+    const wg = ctx.createLinearGradient(0, 0, 0, H);
+    wg.addColorStop(0, '#3a2c22'); wg.addColorStop(1, '#2a2018');
+    ctx.fillStyle = wg; ctx.fillRect(0, 0, W, H);
+  }
   // Wooden floor aligned to tile y=0 (where collision floor is)
   const floorY = (0 - camY) * TILE; // top of the y=0 block in screen coords
   ctx.fillStyle = '#6b4a2f'; ctx.fillRect(0, floorY, W, H - floorY);
@@ -699,11 +707,13 @@ function drawLounge(t) {
   ctx.fillRect(tx - TILE * 1.2, ty - TILE * 0.25, TILE * 2.4, TILE * 0.5);
   ctx.fillStyle = '#5a3d26';
   ctx.fillRect(tx - TILE * 1.3, ty - TILE * 0.35, TILE * 2.6, TILE * 0.15);
-  // Lamp glow
-  const lg = ctx.createRadialGradient(W * 0.5, H * 0.3, 10, W * 0.5, H * 0.3, TILE * 4);
-  lg.addColorStop(0, 'rgba(255, 220, 130, 0.25)');
-  lg.addColorStop(1, 'rgba(255, 220, 130, 0)');
-  ctx.fillStyle = lg; ctx.fillRect(0, 0, W, H);
+  // Lamp glow (high only)
+  if (GFX === 'high') {
+    const lg = ctx.createRadialGradient(W * 0.5, H * 0.3, 10, W * 0.5, H * 0.3, TILE * 4);
+    lg.addColorStop(0, 'rgba(255, 220, 130, 0.25)');
+    lg.addColorStop(1, 'rgba(255, 220, 130, 0)');
+    ctx.fillStyle = lg; ctx.fillRect(0, 0, W, H);
+  }
 }
 function drawCouch(x, floorY) {
   const w = TILE * 3.2, h = TILE * 1.4;
@@ -967,6 +977,25 @@ function setTheme(dark) {
 document.getElementById('theme-light').addEventListener('click', () => setTheme(false));
 document.getElementById('theme-dark').addEventListener('click', () => setTheme(true));
 try { if (localStorage.getItem('mc2-theme') === 'dark') document.body.classList.add('dark'); } catch (e) {}
+// Graphics quality: low / medium / high
+let GFX = 'high';
+try { GFX = localStorage.getItem('mc2-gfx') || 'high'; } catch (e) {}
+function setGfx(q) {
+  GFX = q;
+  try { localStorage.setItem('mc2-gfx', q); } catch (e) {}
+  updateGfxButtons();
+  toast('Graphics: ' + q);
+}
+function updateGfxButtons() {
+  const map = { low: 'gfx-low', med: 'gfx-med', high: 'gfx-high' };
+  for (const [k, id] of Object.entries(map)) {
+    document.getElementById(id).classList.toggle('in-world', GFX === k);
+  }
+}
+document.getElementById('gfx-low').addEventListener('click', () => setGfx('low'));
+document.getElementById('gfx-med').addEventListener('click', () => setGfx('med'));
+document.getElementById('gfx-high').addEventListener('click', () => setGfx('high'));
+updateGfxButtons();
 $('settings-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const err = $('settings-error');
