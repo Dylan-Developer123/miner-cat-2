@@ -314,7 +314,9 @@ async function main() {
 
   // --- validation helpers ---------------------------------------------------
   function validUsername(v) {
-    return typeof v === 'string' && /^[A-Za-z0-9._-]{3,32}$/.test(v);
+    if (typeof v !== 'string') return false;
+    const t = v.trim();
+    return t.length >= 3 && t.length <= 32 && /^[A-Za-z0-9._\- ]+$/.test(t);
   }
   function validPassword(v) {
     return typeof v === 'string' && v.length >= 6 && v.length <= 128;
@@ -331,8 +333,9 @@ async function main() {
   // Auth routes
   // -------------------------------------------------------------------------
   app.post('/api/signup', rateLimit(20, 10 * 60 * 1000), async (req, res) => {
-    const { username, password, displayName } = req.body || {};
-    if (!validUsername(username)) return res.status(400).json({ error: 'Username must be 3-32 chars (letters, numbers, . _ -).' });
+    let { username, password, displayName } = req.body || {};
+    if (typeof username === 'string') username = username.trim();
+    if (!validUsername(username)) return res.status(400).json({ error: 'Username must be 3-32 chars (letters, numbers, spaces, . _ -).' });
     if (!validPassword(password)) return res.status(400).json({ error: 'Password must be at least 6 characters.' });
     if (!validDisplayName(displayName)) return res.status(400).json({ error: 'Display name must be 1-24 characters.' });
     if (await stmtGetUserAuthByUsername.get(username)) {
@@ -353,7 +356,7 @@ async function main() {
     if (typeof username !== 'string' || typeof password !== 'string') {
       return res.status(400).json({ error: 'Username and password are required.' });
     }
-    const row = await stmtGetUserAuthByUsername.get(username);
+    const row = await stmtGetUserAuthByUsername.get(username.trim());
     // Constant-time-ish failure path: always run a bcrypt compare.
     const ok = row ? bcrypt.compareSync(password, row.password_hash) : false;
     if (!ok) return res.status(401).json({ error: 'Invalid username or password.' });
@@ -414,14 +417,15 @@ async function main() {
   // Account settings — change username / display name / password
   // -------------------------------------------------------------------------
   app.patch('/api/account', requireAuth, async (req, res) => {
-    const { currentPassword, username, displayName, newPassword } = req.body || {};
+    let { currentPassword, username, displayName, newPassword } = req.body || {};
+    if (typeof username === 'string') username = username.trim();
     const full = await db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
     if (!full || !bcrypt.compareSync(String(currentPassword || ''), full.password_hash)) {
       return res.status(401).json({ error: 'Current password is incorrect.' });
     }
     const nextUsername = username !== undefined ? username : full.username;
     const nextDisplay = displayName !== undefined ? displayName : full.display_name;
-    if (!validUsername(nextUsername)) return res.status(400).json({ error: 'Username must be 3-32 chars (letters, numbers, . _ -).' });
+    if (!validUsername(nextUsername)) return res.status(400).json({ error: 'Username must be 3-32 chars (letters, numbers, spaces, . _ -).' });
     if (!validDisplayName(nextDisplay)) return res.status(400).json({ error: 'Display name must be 1-24 characters.' });
     if (newPassword !== undefined && newPassword !== '' && !validPassword(newPassword)) {
       return res.status(400).json({ error: 'New password must be at least 6 characters.' });
