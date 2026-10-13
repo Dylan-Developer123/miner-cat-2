@@ -172,8 +172,8 @@ function rarityMult(stage) { return Math.pow(0.985, stage - 1); }
 function genBlock(stage, x, y) {
   if (y < 0) return 'air';
   const seed = stageSeed(stage);
-  if (stage === 1 && y === 0) return 'grass';
-  if (stage > 1 && y === 0) return (x >= 9 && x <= 11) ? 'air' : 'stone'; // entry shaft
+  if ((stage === 1 || stage === MP_STAGE) && y === 0) return 'grass';
+  if (stage > 1 && stage !== MP_STAGE && y === 0) return (x >= 9 && x <= 11) ? 'air' : 'stone'; // entry shaft
   const r = (salt) => hash4(seed, stage * 100003 + y, x * 31 + 7, salt);
   const m = rarityMult(stage);
   if (y >= 30 && r(1) < 0.020 * m) return 'diamond';
@@ -421,7 +421,15 @@ function goToSpawn(sell = true) {
     unlockAch('coin-starter');
     unlockAch('coin-tycoon');
   }
-  S.stage = 1; S.px = SPAWN_X + 0.5; S.py = -0.5;
+  // Adapt spawn to current world
+  if (S.inMp) {
+    S.stage = MP_STAGE;
+  } else if (S.inLounge) {
+    S.stage = LOUNGE_STAGE;
+  } else {
+    S.stage = 1;
+  }
+  S.px = SPAWN_X + 0.5; S.py = -0.5;
   S.vx = 0; S.vy = 0; S.health = MAX_HP;
   refreshStageHeader(); refreshUI();
 }
