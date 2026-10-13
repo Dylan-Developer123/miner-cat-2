@@ -336,16 +336,15 @@ async function main() {
 
   // Public profile shape — never includes password_hash.
   function publicProfile(u) {
-    const hide = !!u.hide_tags;
     return {
       id: u.id,
       username: u.username,
       displayName: u.display_name,
-      isAdmin: hide ? false : !!u.is_admin,
-      isOwner: hide ? false : (!!u.is_owner || !!u.is_admin),
-      isModerator: hide ? false : (!!u.is_moderator || !!u.is_admin),
-      isDeveloper: hide ? false : (!!u.is_developer || !!u.is_admin),
-      hideTags: hide,
+      isAdmin: !!u.is_admin,
+      isOwner: !!u.is_owner || !!u.is_admin,
+      isModerator: !!u.is_moderator || !!u.is_admin,
+      isDeveloper: !!u.is_developer || !!u.is_admin,
+      hideTags: !!u.hide_tags,
       coins: u.coins,
     };
   }
@@ -458,7 +457,7 @@ async function main() {
       leaderboard: rows.map((r) => ({
         displayName: r.display_name,
         coins: r.coins,
-        tags: {
+        tags: r.hide_tags ? {} : {
           owner: !!r.is_owner || !!r.is_admin,
           admin: !!r.is_admin,
           moderator: !!r.is_moderator || !!r.is_admin,

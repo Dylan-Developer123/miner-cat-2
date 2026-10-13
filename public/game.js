@@ -1281,12 +1281,14 @@ function tagHtml(u) {
 }
 function updatePlayerTag() {
   const tag = $('player-tag');
-  if (S.user && (S.user.isOwner || S.user.isAdmin || S.user.isModerator || S.user.isDeveloper)) {
+  const showTags = S.user && !S.user.hideTags;
+  if (showTags && (S.user.isOwner || S.user.isAdmin || S.user.isModerator || S.user.isDeveloper)) {
     tag.innerHTML = tagHtml(S.user);
     tag.classList.remove('hidden');
   } else {
     tag.classList.add('hidden');
   }
+  // Admin panel access is based on actual permissions, NOT hideTags
   const hasTag = S.user && (S.user.isOwner || S.user.isAdmin || S.user.isModerator || S.user.isDeveloper);
   if (hasTag) {
     document.getElementById('ctl-admin').classList.remove('hidden');
