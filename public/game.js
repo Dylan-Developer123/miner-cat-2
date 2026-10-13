@@ -189,7 +189,7 @@ function blockAt(stage, x, y) {
   if (x <= 0 || x >= COLS - 1) return 'bedrock';       // world borders
   if (stage === 1 && x === SPAWN_X && y === 0) return 'bedrock'; // spawn block
   if (y < 0) return 'air';
-  // Admin's Lounge: flat wooden floor, no mining
+  // Admin Lounge: flat wooden floor, no mining
   if (stage === LOUNGE_STAGE) return y === 0 ? 'wood' : 'air';
   const key = stage + ':' + x + ':' + y;
   // Placed blocks
@@ -681,7 +681,7 @@ function render(t) {
   const cw = canvas.clientWidth, ch = canvas.clientHeight;
   if (canvas.width !== Math.round(cw * dpr) || canvas.height !== Math.round(ch * dpr)) resize();
   const W = canvas.width / dpr, H = canvas.height / dpr;
-  // Admin's Lounge — draw the cozy room instead of blocks
+  // Admin Lounge — draw the cozy room instead of blocks
   if (S.inLounge) {
     drawLounge(t);
     drawCat(t);
@@ -729,7 +729,7 @@ function render(t) {
   drawMpPlayers();
 }
 
-// Admin's Lounge — a cozy room with couch and chairs (no mining here)
+// Admin Lounge — a cozy room with couch and chairs (no mining here)
 function drawLounge(t) {
   const W = canvas.width / dpr, H = canvas.height / dpr;
   // Wall (gradient on med/high, solid on low)
@@ -757,7 +757,7 @@ function drawLounge(t) {
   ctx.fillStyle = '#c9a227';
   ctx.font = `bold ${Math.max(16, TILE * 0.5)}px sans-serif`;
   ctx.textAlign = 'center';
-  ctx.fillText("👑 Admin's Lounge", W / 2, H * 0.15);
+  ctx.fillText("👑 Admin Lounge", W / 2, H * 0.15);
   // Couch (left)
   drawCouch(W * 0.18, floorY);
   // Chairs (right)
@@ -927,7 +927,7 @@ function toast(msg) {
 }
 function refreshStageHeader() {
   if (S.inLounge) {
-    $('stage-title').textContent = `👑 Admin's Lounge`;
+    $('stage-title').textContent = `👑 Admin Lounge`;
     $('stage-sub').textContent = 'Admins only!';
     return;
   }
