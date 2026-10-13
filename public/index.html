@@ -4,17 +4,24 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Miner Cat 2</title>
-<link rel="stylesheet" href="styles.css?v=21">
+<link rel="stylesheet" href="styles.css?v=22">
 </head>
 <body>
 
-<!-- ============ AUTH OVERLAY ============ -->
+<!-- ============ LANDING / AUTH ============ -->
 <div id="auth-overlay" class="overlay hidden">
-  <div class="panel auth-panel">
+  <div class="panel auth-panel landing">
     <div class="auth-logo">⛏️</div>
-    <p class="eyebrow">PLAYER PROFILE</p>
-    <h1>Claim your<br>spot in the mine</h1>
-    <p class="muted">Your progress autosaves every minute. Your display name appears on the coins leaderboard.</p>
+    <p class="eyebrow">EARTH SCIENCE · MINERALOGY</p>
+    <h1>Discover minerals<br>by digging for them</h1>
+    <p class="muted">Miner Cat 2 is a hands-on way to learn about real minerals — coal, copper, iron, gold, and diamond. Dig through 100 layers of earth, identify what you find, and build your collection.</p>
+    <div class="mineral-facts">
+      <div class="fact"><b>🪨 Coal</b><span>Formed from ancient plants</span></div>
+      <div class="fact"><b>🟧 Copper</b><span>Conducts electricity</span></div>
+      <div class="fact"><b>🔩 Iron</b><span>Core of our planet</span></div>
+      <div class="fact"><b>🟨 Gold</b><span>Never rusts or tarnishes</span></div>
+      <div class="fact"><b>💎 Diamond</b><span>Hardest natural material</span></div>
+    </div>
     <div class="tabs">
       <button id="tab-signup" class="tab active">Create account</button>
       <button id="tab-signin" class="tab">Sign in</button>
@@ -33,6 +40,7 @@
       <small class="muted">Use at least 6 characters.</small>
       <button type="submit" id="auth-submit" class="btn primary big">Create &amp; play</button>
     </form>
+    <p class="muted" style="margin-top:12px;font-size:0.85em;">Your progress autosaves every minute.</p>
   </div>
 </div>
 
@@ -212,6 +220,6 @@
   </div>
 </div>
 
-<script src="game.js?v=40"></script>
+<script src="game.js?v=41"></script>
 </body>
 </html>
