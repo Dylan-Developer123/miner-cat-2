@@ -832,6 +832,14 @@ $('btn-settings').onclick = () => {
   $('settings-overlay').classList.remove('hidden');
 };
 $('btn-close-settings').onclick = () => $('settings-overlay').classList.add('hidden');
+// Theme changer (light/dark), persisted in localStorage
+function setTheme(dark) {
+  document.body.classList.toggle('dark', dark);
+  try { localStorage.setItem('mc2-theme', dark ? 'dark' : 'light'); } catch (e) {}
+}
+document.getElementById('theme-light').addEventListener('click', () => setTheme(false));
+document.getElementById('theme-dark').addEventListener('click', () => setTheme(true));
+try { if (localStorage.getItem('mc2-theme') === 'dark') document.body.classList.add('dark'); } catch (e) {}
 $('settings-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const err = $('settings-error');

@@ -11,12 +11,29 @@
   --green: #5da85f;
   --red: #d9534f;
   --radius: 14px;
+  --page-bg: #efe6d0;
+  --panel-bg: var(--cream);
+  --input-bg: #ffffff;
+  --input-ink: #2a2118;
+}
+/* Dark theme */
+body.dark {
+  --cream: #1e1a14;
+  --cream-2: #2a241b;
+  --ink: #f0e8d8;
+  --muted: #a89a80;
+  --accent: #e8a33d;
+  --accent-dark: #c07f1f;
+  --page-bg: #12100c;
+  --panel-bg: #1e1a14;
+  --input-bg: #2a241b;
+  --input-ink: #f0e8d8;
 }
 * { box-sizing: border-box; }
 html, body {
   margin: 0; padding: 0;
   font-family: "Trebuchet MS", "Segoe UI", Verdana, sans-serif;
-  background: #efe6d0;
+  background: var(--page-bg);
   color: var(--ink);
   overscroll-behavior: none;
 }
@@ -89,7 +106,7 @@ html, body {
 form label { display: block; margin: 12px 0 4px; font-weight: bold; font-size: 0.9em; }
 form input {
   width: 100%; padding: 10px 12px; font-size: 1em; font-family: inherit;
-  border: 2px solid #d9c69c; border-radius: 10px; background: #fffdf6; color: var(--ink);
+  border: 2px solid #d9c69c; border-radius: 10px; background: var(--input-bg); color: var(--input-ink);
 }
 form input:focus { outline: 2px solid var(--accent); }
 form small { display: block; margin-top: 4px; }
