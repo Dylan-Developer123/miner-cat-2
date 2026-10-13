@@ -550,9 +550,10 @@ async function main() {
       case 'unban': {
         const target = String(req.body.target || '').trim();
         if (!target) return res.status(400).json({ error: 'Username required.' });
-        const victim = await db.prepare('SELECT id, is_admin FROM users WHERE username = ?').get(target);
+        const victim = await db.prepare('SELECT id, is_admin, is_owner FROM users WHERE username = ?').get(target);
         if (!victim) return res.status(404).json({ error: 'Account not found.' });
         if (victim.id === req.user.id) return res.status(400).json({ error: 'You cannot ban yourself.' });
+        if (victim.is_owner) return res.status(400).json({ error: 'Cannot ban the owner.' });
         if (victim.is_admin) return res.status(400).json({ error: 'Cannot ban an admin.' });
         const bannedVal = command === 'ban' ? 1 : 0;
         await db.prepare('UPDATE users SET banned = ? WHERE id = ?').run(bannedVal, victim.id);
@@ -587,8 +588,11 @@ async function main() {
       case 'reset': {
         const target = String(req.body.target || '').trim();
         if (!target) return res.status(400).json({ error: 'Username required.' });
-        const targetUser = await db.prepare('SELECT id, is_admin FROM users WHERE username = ?').get(target);
+        const targetUser = await db.prepare('SELECT id, is_admin, is_owner FROM users WHERE username = ?').get(target);
         if (!targetUser) return res.status(404).json({ error: 'Account not found.' });
+        if (targetUser.is_owner && targetUser.id !== req.user.id) {
+          return res.status(400).json({ error: 'Cannot reset the owner.' });
+        }
         if (targetUser.is_admin && targetUser.id !== req.user.id) {
           return res.status(400).json({ error: 'Cannot reset another admin.' });
         }
