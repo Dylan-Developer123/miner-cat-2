@@ -842,9 +842,8 @@ function loop(t) {
 /* ------------------------------- wiring -------------------------------- */
 $('btn-sell').onclick = sellBackpack;
 $('btn-spawn').onclick = () => goToSpawn(true);
-document.getElementById('btn-mp').addEventListener('click', () => {
-  if (S.inMp) mpLeave(); else mpJoin();
-});
+document.getElementById('btn-mp').addEventListener('click', () => mpJoin());
+document.getElementById('btn-solo').addEventListener('click', () => mpLeave());
 // Touch controls: hidden on keyboard/mouse devices via CSS; show if touch is used.
 const controlsEl = document.getElementById('controls');
 window.addEventListener('touchstart', () => controlsEl.classList.add('force-show'), { passive: true });
@@ -1046,9 +1045,6 @@ function mpJoin() {
   S.dmg.clear();
   refreshStageHeader(); refreshUI();
   toast('🌐 Joined multiplayer world!');
-  const mpBtn = document.getElementById('btn-mp');
-  mpBtn.textContent = '👤 Single player';
-  mpBtn.title = 'Back to single player';
 }
 function mpLeave() {
   if (!S.inMp) return;
@@ -1057,9 +1053,6 @@ function mpLeave() {
   S.vx = 0; S.vy = 0; S.dmg.clear();
   refreshStageHeader(); refreshUI();
   toast('Back to solo.');
-  const mpBtn2 = document.getElementById('btn-mp');
-  mpBtn2.textContent = '🌐 Multiplayer';
-  mpBtn2.title = 'Join multiplayer world';
 }
 function mpConnect() {
   if (MP.ws) { try { MP.ws.close(); } catch (e) {} }
