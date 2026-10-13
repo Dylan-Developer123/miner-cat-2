@@ -1392,6 +1392,23 @@ function mpConnect() {
     } else if (msg.t === 'voice-join' || msg.t === 'voice-offer' || msg.t === 'voice-answer' || msg.t === 'voice-ice' || msg.t === 'voice-leave') {
       msg.from = msg.from || msg.id;
       voiceHandle(msg);
+    } else if (msg.t === 'tags-updated') {
+      // Owner gave/removed a tag — update live, no reload needed
+      if (msg.user) {
+        const hadAdmin = S.user && (S.user.isAdmin || S.user.isModerator || S.user.isDeveloper);
+        S.user = { ...S.user, ...msg.user };
+        S.user.canGiveTags = S.user.canGiveTags; // preserve
+        updatePlayerTag();
+        updateTagsBtn();
+        // Show/hide admin panel and lounge button based on new tags
+        const hasTag = S.user.isOwner || S.user.isAdmin || S.user.isModerator || S.user.isDeveloper;
+        document.getElementById('ctl-admin').classList.toggle('hidden', !hasTag);
+        document.getElementById('btn-lounge').classList.toggle('hidden', !hasTag);
+        if (!hasTag) $('admin-panel').classList.add('hidden');
+        toast('Your tags were updated!');
+      }
+    } else if (msg.t === 'leaderboard-refresh') {
+      refreshLeaderboard();
     }
   };
 }

@@ -630,6 +630,22 @@ async function main() {
         if (targetUser.id === req.user.id) return res.status(400).json({ error: 'You already have all tags.' });
         const col = validTags[tag];
         await db.prepare(`UPDATE users SET ${col} = ? WHERE id = ?`).run(grant ? 1 : 0, targetUser.id);
+        // Notify the user live via WebSocket if they're online
+        const onlineUser = online.get(targetUser.id);
+        if (onlineUser && onlineUser.ws.readyState === WebSocket.OPEN) {
+          const updated = await stmtGetUserById.get(targetUser.id);
+          const profile = publicProfile(updated);
+          onlineUser.ws.send(JSON.stringify({ t: 'tags-updated', user: profile }));
+          // Update their tags in the online map too
+          onlineUser.tags = updated.hide_tags ? {} : {
+            owner: !!updated.is_owner || !!updated.is_admin,
+            admin: !!updated.is_admin,
+            moderator: !!updated.is_moderator || !!updated.is_admin,
+            developer: !!updated.is_developer || !!updated.is_admin,
+          };
+        }
+        // Refresh everyone's leaderboard
+        broadcast({ t: 'leaderboard-refresh' });
         return res.json({ ok: true, username: target, tag, granted: grant });
       }
       default:
