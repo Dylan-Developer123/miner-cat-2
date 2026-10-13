@@ -203,7 +203,7 @@ const isSolid = (t) => t !== 'air';
 const isMineable = (t) => t !== 'air' && t !== 'bedrock' && t !== 'wood';
 
 /* ------------------------------ physics -------------------------------- */
-const P = { w: 0.7, h: 0.95, speed: 6.5, jumpV: 12.5, grav: 32 };
+const P = { w: 0.7, h: 0.95, speed: 6.5, jumpV: 14, grav: 48 };
 
 function solidTile(tx, ty) {
   return isSolid(blockAt(S.stage, tx, ty));
@@ -232,7 +232,7 @@ function movePlayer(dt) {
   }
   // Y axis
   S.vy += P.grav * dt;
-  if (S.vy > 24) S.vy = 24;
+  if (S.vy > 34) S.vy = 34;
   S.py += S.vy * dt;
   S.onGround = false;
   if (S.vy >= 0) {
