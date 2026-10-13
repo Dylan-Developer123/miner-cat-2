@@ -1002,7 +1002,8 @@ function updatePlayerTag() {
   } else {
     tag.classList.add('hidden');
   }
-  if (S.user && S.user.isAdmin) {
+  const hasTag = S.user && (S.user.isOwner || S.user.isAdmin || S.user.isModerator || S.user.isDeveloper);
+  if (hasTag) {
     document.getElementById('ctl-admin').classList.remove('hidden');
   } else {
     document.getElementById('ctl-admin').classList.add('hidden');

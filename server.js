@@ -326,7 +326,8 @@ async function main() {
   }
 
   function requireAdmin(req, res, next) {
-    if (!req.user || !req.user.is_admin) {
+    const u = req.user;
+    if (!u || !(u.is_admin || u.is_moderator || u.is_developer || u.is_owner)) {
       return res.status(403).json({ error: 'Admin only.' });
     }
     next();
