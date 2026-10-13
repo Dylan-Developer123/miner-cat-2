@@ -660,6 +660,12 @@ bindHold(document.getElementById('ctl-left'), () => input.left = true, () => inp
 bindHold(document.getElementById('ctl-right'), () => input.right = true, () => input.right = false);
 bindHold(document.getElementById('ctl-jump'), () => input.jumpQueued = true, () => {});
 bindHold(document.getElementById('ctl-mine'), () => input.mineHeld = true, () => input.mineHeld = false);
+document.getElementById('ctl-ach').addEventListener('click', () => {
+  const panel = document.getElementById('ach-list').closest('.panel');
+  panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  panel.classList.add('flash');
+  setTimeout(() => panel.classList.remove('flash'), 1200);
+});
 
 canvas.addEventListener('pointerdown', (e) => {
   pointer.active = true; pointer.x = e.clientX; pointer.y = e.clientY;
