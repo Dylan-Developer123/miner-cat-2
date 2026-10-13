@@ -430,6 +430,9 @@ function resize() {
   canvas.style.height = h + 'px';
   canvas.width = Math.round(w * dpr);
   canvas.height = Math.round(h * dpr);
+  // HiDPI: scale drawing so CSS-pixel coordinates map to the backing store.
+  // (Setting width/height resets the transform, so this must come after.)
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   // zoom: entire 21-block width (borders) always visible; clamp tile size so
   // blocks stay tappable on tiny screens and sane on huge ones
   TILE = Math.max(14, Math.min(72, w / COLS));
