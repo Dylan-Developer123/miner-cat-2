@@ -670,8 +670,8 @@ function drawLounge(t) {
   const wg = ctx.createLinearGradient(0, 0, 0, H);
   wg.addColorStop(0, '#3a2c22'); wg.addColorStop(1, '#2a2018');
   ctx.fillStyle = wg; ctx.fillRect(0, 0, W, H);
-  // Wooden floor (bottom 30%)
-  const floorY = H * 0.7;
+  // Wooden floor aligned to tile y=0 (where collision floor is)
+  const floorY = (0 - camY) * TILE; // top of the y=0 block in screen coords
   ctx.fillStyle = '#6b4a2f'; ctx.fillRect(0, floorY, W, H - floorY);
   ctx.strokeStyle = '#5a3d26'; ctx.lineWidth = 2;
   for (let y = floorY + 12; y < H; y += 18) {
