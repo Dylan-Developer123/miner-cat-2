@@ -1594,6 +1594,8 @@ async function startGame() {
   } catch {
     loadSave({}); // fresh game
   }
+  // Always spawn at the spawn point on load
+  S.px = SPAWN_X + 0.5; S.py = -0.5; S.vx = 0; S.vy = 0;
   updatePlayerTag(); refreshGodBtn();
   refreshStageHeader();
   refreshUI();
