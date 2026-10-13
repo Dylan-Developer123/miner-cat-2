@@ -545,6 +545,10 @@ function roundRect(x, y, w, h, r) {
 }
 
 function render(t) {
+  // Self-heal: if the canvas CSS size changed without resize() running
+  // (missed resize/observer event), re-sync backing store and tile size.
+  const cw = canvas.clientWidth, ch = canvas.clientHeight;
+  if (canvas.width !== Math.round(cw * dpr) || canvas.height !== Math.round(ch * dpr)) resize();
   const W = canvas.width / dpr, H = canvas.height / dpr;
   // background
   if (S.stage === 1 && camY < 6) {
