@@ -661,11 +661,14 @@ bindHold(document.getElementById('ctl-right'), () => input.right = true, () => i
 bindHold(document.getElementById('ctl-jump'), () => input.jumpQueued = true, () => {});
 bindHold(document.getElementById('ctl-mine'), () => input.mineHeld = true, () => input.mineHeld = false);
 document.getElementById('ctl-ach').addEventListener('click', () => {
-  const panel = document.getElementById('ach-list').closest('.panel');
-  panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  panel.classList.add('flash');
-  setTimeout(() => panel.classList.remove('flash'), 1200);
+  document.getElementById('ach-modal-list').innerHTML = document.getElementById('ach-list').innerHTML;
+  document.getElementById('ach-modal').classList.remove('hidden');
 });
+document.getElementById('ach-close').addEventListener('click', closeAchModal);
+document.getElementById('ach-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'ach-modal') closeAchModal();
+});
+function closeAchModal() { document.getElementById('ach-modal').classList.add('hidden'); }
 
 canvas.addEventListener('pointerdown', (e) => {
   pointer.active = true; pointer.x = e.clientX; pointer.y = e.clientY;
