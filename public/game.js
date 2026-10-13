@@ -696,24 +696,8 @@ function render(t) {
     drawMpPlayers();
     return;
   }
-  // background
-  if (S.stage === 1 && camY < 6) {
-    if (GFX === 'low') {
-      ctx.fillStyle = '#a8d8f0'; ctx.fillRect(0, 0, W, H);
-    } else {
-      const g = ctx.createLinearGradient(0, 0, 0, H);
-      g.addColorStop(0, '#8fd0f0'); g.addColorStop(1, '#d8f0fa');
-      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-    }
-    // mountains
-    ctx.fillStyle = '#b9d4c8';
-    const baseY = (0 - camY) * TILE;
-    ctx.beginPath(); ctx.moveTo(0, baseY);
-    for (let x = 0; x <= W; x += W / 6) ctx.lineTo(x + W / 12, baseY - H * 0.16 - (x % (W / 3)) * 0.02);
-    ctx.lineTo(W, baseY); ctx.closePath(); ctx.fill();
-  } else {
-    ctx.fillStyle = '#171310'; ctx.fillRect(0, 0, W, H);
-  }
+  // background — dark like multiplayer
+  ctx.fillStyle = '#171310'; ctx.fillRect(0, 0, W, H);
 
   const yStart = Math.max(0, Math.floor(camY) - 1);
   const yEnd = Math.ceil(camY + H / TILE) + 1;
