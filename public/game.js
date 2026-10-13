@@ -1371,6 +1371,7 @@ async function voiceHandle(msg) {
     if (el) { el.remove(); Voice.audioEls.delete(from); }
   }
 }
+let authMode = 'signup';
 function setAuthMode(mode) {
   authMode = mode;
   $('tab-signup').classList.toggle('active', mode === 'signup');
