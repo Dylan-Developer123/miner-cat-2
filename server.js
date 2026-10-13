@@ -1,17 +1,21 @@
 /**
  * Miner Cat 2 — standalone server
  *
- * Express + SQLite (via sql.js WebAssembly, so it runs on any Node version
- * with zero native dependencies) backend for the Miner Cat 2 digging game.
+ * Express backend for the Miner Cat 2 digging game.
  * - Accounts: username + bcrypt-hashed password + display name
  * - Cookie sessions (httpOnly)
  * - Server-side game saves, coins leaderboard
  * - Admin: the FIRST registered account automatically becomes admin/owner
  *          and gets a "developer" tag. Admin-only powers via /api/admin.
  *
+ * Database: uses Postgres when DATABASE_URL is set (e.g. Neon on Render),
+ * otherwise falls back to a local SQLite file via sql.js (WebAssembly, so it
+ * runs on any Node version with zero native dependencies).
+ *
  * Env vars:
- *   PORT     - port to listen on (hosts set this automatically)
- *   DB_PATH  - SQLite file location (default: ./data.sqlite)
+ *   PORT         - port to listen on (hosts set this automatically)
+ *   DATABASE_URL - Postgres connection string (persistent storage)
+ *   DB_PATH      - SQLite file location for local fallback (default: ./data.sqlite)
  *
  * Security notes:
  * - Passwords are only ever handled as bcrypt hashes; raw passwords and
@@ -25,21 +29,52 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const initSqlJs = require('sql.js');
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
+const DATABASE_URL = process.env.DATABASE_URL || '';
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data.sqlite');
 const SESSION_COOKIE = 'mc2_session';
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const MAX_SAVE_BYTES = 200 * 1024;
+const USE_PG = DATABASE_URL.length > 0;
 
 // ---------------------------------------------------------------------------
-// Database — sql.js (SQLite compiled to WebAssembly). The DB lives in memory
-// and is exported to DB_PATH after every write, so it survives restarts.
-// The wrapper below exposes the same tiny API the rest of the code uses:
-// db.exec(sql), db.prepare(sql) -> { get(...), all(...), run(...) }.
+// Database wrappers — both expose the same tiny async API:
+//   db.exec(sql)
+//   db.prepare(sql) -> { get(...params), all(...params), run(...params) }
+// SQL uses `?` placeholders; the pg wrapper translates them to $1, $2, ...
 // ---------------------------------------------------------------------------
-function createDb(SQL) {
+function toPg(sql) {
+  let i = 0;
+  return sql.replace(/\?/g, () => '$' + (++i));
+}
+
+function createPgDb(pool) {
+  return {
+    async exec(sql) {
+      await pool.query(toPg(sql));
+    },
+    prepare(sql) {
+      const text = toPg(sql);
+      return {
+        async get(...params) {
+          const r = await pool.query(text, params);
+          return r.rows[0];
+        },
+        async all(...params) {
+          const r = await pool.query(text, params);
+          return r.rows;
+        },
+        async run(...params) {
+          const r = await pool.query(text, params);
+          return { changes: r.rowCount || 0 };
+        },
+      };
+    },
+  };
+}
+
+function createSqlJsDb(SQL) {
   let sqlDb;
   if (fs.existsSync(DB_PATH)) {
     sqlDb = new SQL.Database(fs.readFileSync(DB_PATH));
@@ -51,78 +86,116 @@ function createDb(SQL) {
     fs.writeFileSync(DB_PATH, Buffer.from(sqlDb.export()));
   }
 
-  function exec(sql) {
-    sqlDb.exec(sql);
-  }
-
-  function prepare(sql) {
-    return {
-      get(...params) {
-        const stmt = sqlDb.prepare(sql);
-        try {
-          if (params.length) stmt.bind(params);
-          return stmt.step() ? stmt.getAsObject() : undefined;
-        } finally {
-          stmt.free();
-        }
-      },
-      all(...params) {
-        const stmt = sqlDb.prepare(sql);
-        const rows = [];
-        try {
-          if (params.length) stmt.bind(params);
-          while (stmt.step()) rows.push(stmt.getAsObject());
-          return rows;
-        } finally {
-          stmt.free();
-        }
-      },
-      run(...params) {
-        const stmt = sqlDb.prepare(sql);
-        try {
-          if (params.length) stmt.bind(params);
-          stmt.step();
-        } finally {
-          stmt.free();
-        }
-        const idRes = sqlDb.exec('SELECT last_insert_rowid() AS id');
-        const lastInsertRowid = idRes.length ? idRes[0].values[0][0] : 0;
-        persist();
-        return { lastInsertRowid, changes: sqlDb.getRowsModified() };
-      },
-    };
-  }
-
-  return { exec, prepare };
+  return {
+    exec(sql) {
+      sqlDb.exec(sql);
+    },
+    prepare(sql) {
+      return {
+        get(...params) {
+          const stmt = sqlDb.prepare(sql);
+          try {
+            if (params.length) stmt.bind(params);
+            return stmt.step() ? stmt.getAsObject() : undefined;
+          } finally {
+            stmt.free();
+          }
+        },
+        all(...params) {
+          const stmt = sqlDb.prepare(sql);
+          const rows = [];
+          try {
+            if (params.length) stmt.bind(params);
+            while (stmt.step()) rows.push(stmt.getAsObject());
+            return rows;
+          } finally {
+            stmt.free();
+          }
+        },
+        run(...params) {
+          const stmt = sqlDb.prepare(sql);
+          try {
+            if (params.length) stmt.bind(params);
+            stmt.step();
+          } finally {
+            stmt.free();
+          }
+          persist();
+          return { changes: sqlDb.getRowsModified() };
+        },
+      };
+    },
+  };
 }
 
-async function main() {
-  const SQL = await initSqlJs();
-  const db = createDb(SQL);
+const SCHEMA_SQLITE = `
+  CREATE TABLE IF NOT EXISTS users (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    username      TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    display_name  TEXT NOT NULL,
+    is_admin      INTEGER NOT NULL DEFAULT 0,
+    coins         INTEGER NOT NULL DEFAULT 0,
+    created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS saves (
+    user_id    INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    save_json  TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS sessions (
+    token      TEXT PRIMARY KEY,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    expires_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_users_coins ON users (coins DESC);
+  CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions (user_id);
+`;
 
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-      id            INTEGER PRIMARY KEY AUTOINCREMENT,
-      username      TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      display_name  TEXT NOT NULL,
-      is_admin      INTEGER NOT NULL DEFAULT 0,
-      coins         INTEGER NOT NULL DEFAULT 0,
-      created_at    TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-    CREATE TABLE IF NOT EXISTS saves (
-      user_id    INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-      save_json  TEXT NOT NULL,
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-    CREATE TABLE IF NOT EXISTS sessions (
-      token      TEXT PRIMARY KEY,
-      user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      expires_at INTEGER NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_users_coins ON users (coins DESC);
-    CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions (user_id);
-  `);
+const SCHEMA_PG = `
+  CREATE TABLE IF NOT EXISTS users (
+    id            SERIAL PRIMARY KEY,
+    username      TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    display_name  TEXT NOT NULL,
+    is_admin      INTEGER NOT NULL DEFAULT 0,
+    coins         INTEGER NOT NULL DEFAULT 0,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+  CREATE TABLE IF NOT EXISTS saves (
+    user_id    INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    save_json  TEXT NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+  CREATE TABLE IF NOT EXISTS sessions (
+    token      TEXT PRIMARY KEY,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    expires_at BIGINT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_users_coins ON users (coins DESC);
+  CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions (user_id);
+`;
+
+async function main() {
+  let db;
+  if (USE_PG) {
+    const { Pool } = require('pg');
+    const pool = new Pool({
+      connectionString: DATABASE_URL,
+      ssl: { rejectUnauthorized: false }, // required by Neon and similar hosts
+    });
+    db = createPgDb(pool);
+    await db.exec(SCHEMA_PG);
+    console.log('Using Postgres database');
+  } else {
+    const initSqlJs = require('sql.js');
+    const SQL = await initSqlJs();
+    db = createSqlJsDb(SQL);
+    db.exec(SCHEMA_SQLITE);
+    console.log('Using local SQLite database at ' + DB_PATH);
+  }
+
+  const NOW = USE_PG ? 'NOW()' : "datetime('now')";
 
   // Prepared statements
   const stmtGetUserById = db.prepare('SELECT id, username, display_name, is_admin, coins FROM users WHERE id = ?');
@@ -135,10 +208,10 @@ async function main() {
   const stmtUpdateAccount = db.prepare('UPDATE users SET username = ?, display_name = ? WHERE id = ?');
   const stmtUpdatePassword = db.prepare('UPDATE users SET password_hash = ? WHERE id = ?');
   const stmtGetSave = db.prepare('SELECT save_json, updated_at FROM saves WHERE user_id = ?');
-  const stmtUpsertSave = db.prepare(`
-    INSERT INTO saves (user_id, save_json, updated_at) VALUES (?, ?, datetime('now'))
-    ON CONFLICT(user_id) DO UPDATE SET save_json = excluded.save_json, updated_at = datetime('now')
-  `);
+  const stmtUpsertSave = db.prepare(
+    'INSERT INTO saves (user_id, save_json, updated_at) VALUES (?, ?, ' + NOW + ')' +
+    ' ON CONFLICT(user_id) DO UPDATE SET save_json = excluded.save_json, updated_at = ' + NOW
+  );
   const stmtInsertSession = db.prepare('INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)');
   const stmtGetSession = db.prepare('SELECT user_id, expires_at FROM sessions WHERE token = ?');
   const stmtDeleteSession = db.prepare('DELETE FROM sessions WHERE token = ?');
@@ -190,24 +263,28 @@ async function main() {
     return crypto.randomBytes(32).toString('hex'); // 64 chars
   }
 
-  function createSession(res, userId) {
+  async function createSession(res, userId) {
     const token = newSessionToken();
-    stmtInsertSession.run(token, userId, Date.now() + SESSION_TTL_MS);
+    await stmtInsertSession.run(token, userId, Date.now() + SESSION_TTL_MS);
     res.cookie(SESSION_COOKIE, token, sessionCookieOptions());
   }
 
   // Attach req.user (public profile fields only) when a valid session exists.
-  app.use((req, res, next) => {
+  app.use(async (req, res, next) => {
     req.user = null;
-    const token = req.cookies[SESSION_COOKIE];
-    if (typeof token === 'string' && token.length === 64) {
-      const row = stmtGetSession.get(token);
-      if (row && row.expires_at > Date.now()) {
-        const user = stmtGetUserById.get(row.user_id);
-        if (user) req.user = user;
-      } else if (row) {
-        stmtDeleteSession.run(token); // expired
+    try {
+      const token = req.cookies[SESSION_COOKIE];
+      if (typeof token === 'string' && token.length === 64) {
+        const row = await stmtGetSession.get(token);
+        if (row && Number(row.expires_at) > Date.now()) {
+          const user = await stmtGetUserById.get(row.user_id);
+          if (user) req.user = user;
+        } else if (row) {
+          await stmtDeleteSession.run(token); // expired
+        }
       }
+    } catch (e) {
+      console.error('session lookup failed:', e.message);
     }
     next();
   });
@@ -253,38 +330,40 @@ async function main() {
   // -------------------------------------------------------------------------
   // Auth routes
   // -------------------------------------------------------------------------
-  app.post('/api/signup', rateLimit(20, 10 * 60 * 1000), (req, res) => {
+  app.post('/api/signup', rateLimit(20, 10 * 60 * 1000), async (req, res) => {
     const { username, password, displayName } = req.body || {};
     if (!validUsername(username)) return res.status(400).json({ error: 'Username must be 3-32 chars (letters, numbers, . _ -).' });
     if (!validPassword(password)) return res.status(400).json({ error: 'Password must be at least 6 characters.' });
     if (!validDisplayName(displayName)) return res.status(400).json({ error: 'Display name must be 1-24 characters.' });
-    if (stmtGetUserAuthByUsername.get(username)) {
+    if (await stmtGetUserAuthByUsername.get(username)) {
       return res.status(409).json({ error: 'That username is taken.' });
     }
-    const isFirst = stmtCountUsers.get().n === 0;
+    const countRow = await stmtCountUsers.get();
+    const isFirst = Number(countRow.n) === 0;
     const hash = bcrypt.hashSync(password, 10);
-    const info = stmtInsertUser.run(username, hash, displayName.trim(), isFirst ? 1 : 0);
-    const user = stmtGetUserById.get(Number(info.lastInsertRowid));
-    createSession(res, user.id);
+    await stmtInsertUser.run(username, hash, displayName.trim(), isFirst ? 1 : 0);
+    const authRow = await stmtGetUserAuthByUsername.get(username);
+    const user = await stmtGetUserById.get(authRow.id);
+    await createSession(res, user.id);
     res.status(201).json({ user: publicProfile(user) });
   });
 
-  app.post('/api/signin', rateLimit(30, 10 * 60 * 1000), (req, res) => {
+  app.post('/api/signin', rateLimit(30, 10 * 60 * 1000), async (req, res) => {
     const { username, password } = req.body || {};
     if (typeof username !== 'string' || typeof password !== 'string') {
       return res.status(400).json({ error: 'Username and password are required.' });
     }
-    const row = stmtGetUserAuthByUsername.get(username);
+    const row = await stmtGetUserAuthByUsername.get(username);
     // Constant-time-ish failure path: always run a bcrypt compare.
     const ok = row ? bcrypt.compareSync(password, row.password_hash) : false;
     if (!ok) return res.status(401).json({ error: 'Invalid username or password.' });
-    createSession(res, row.id);
-    res.json({ user: publicProfile(stmtGetUserById.get(row.id)) });
+    await createSession(res, row.id);
+    res.json({ user: publicProfile(await stmtGetUserById.get(row.id)) });
   });
 
-  app.post('/api/signout', (req, res) => {
+  app.post('/api/signout', async (req, res) => {
     const token = req.cookies[SESSION_COOKIE];
-    if (typeof token === 'string') stmtDeleteSession.run(token);
+    if (typeof token === 'string') await stmtDeleteSession.run(token);
     res.clearCookie(SESSION_COOKIE, { path: '/' });
     res.json({ ok: true });
   });
@@ -297,13 +376,13 @@ async function main() {
   // -------------------------------------------------------------------------
   // Saves
   // -------------------------------------------------------------------------
-  app.get('/api/save', requireAuth, (req, res) => {
-    const row = stmtGetSave.get(req.user.id);
+  app.get('/api/save', requireAuth, async (req, res) => {
+    const row = await stmtGetSave.get(req.user.id);
     if (!row) return res.status(404).json({ error: 'No save yet.' });
     res.json({ save: JSON.parse(row.save_json), updatedAt: row.updated_at });
   });
 
-  app.post('/api/save', requireAuth, (req, res) => {
+  app.post('/api/save', requireAuth, async (req, res) => {
     const { save } = req.body || {};
     if (!save || typeof save !== 'object' || Array.isArray(save)) {
       return res.status(400).json({ error: 'Invalid save data.' });
@@ -312,16 +391,16 @@ async function main() {
     if (json.length > MAX_SAVE_BYTES) {
       return res.status(413).json({ error: 'Save data too large.' });
     }
-    stmtUpsertSave.run(req.user.id, json);
-    stmtUpdateUserCoins.run(coinsFromSave(save), req.user.id);
+    await stmtUpsertSave.run(req.user.id, json);
+    await stmtUpdateUserCoins.run(coinsFromSave(save), req.user.id);
     res.json({ ok: true });
   });
 
   // -------------------------------------------------------------------------
   // Leaderboard — ranked by coins, shows display names (+ developer tag)
   // -------------------------------------------------------------------------
-  app.get('/api/leaderboard', (req, res) => {
-    const rows = stmtLeaderboard.all();
+  app.get('/api/leaderboard', async (req, res) => {
+    const rows = await stmtLeaderboard.all();
     res.json({
       leaderboard: rows.map((r) => ({
         displayName: r.display_name,
@@ -334,9 +413,9 @@ async function main() {
   // -------------------------------------------------------------------------
   // Account settings — change username / display name / password
   // -------------------------------------------------------------------------
-  app.patch('/api/account', requireAuth, (req, res) => {
+  app.patch('/api/account', requireAuth, async (req, res) => {
     const { currentPassword, username, displayName, newPassword } = req.body || {};
-    const full = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+    const full = await db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
     if (!full || !bcrypt.compareSync(String(currentPassword || ''), full.password_hash)) {
       return res.status(401).json({ error: 'Current password is incorrect.' });
     }
@@ -347,25 +426,25 @@ async function main() {
     if (newPassword !== undefined && newPassword !== '' && !validPassword(newPassword)) {
       return res.status(400).json({ error: 'New password must be at least 6 characters.' });
     }
-    if (nextUsername !== full.username && stmtGetUserAuthByUsername.get(nextUsername)) {
+    if (nextUsername !== full.username && await stmtGetUserAuthByUsername.get(nextUsername)) {
       return res.status(409).json({ error: 'That username is taken.' });
     }
-    stmtUpdateAccount.run(nextUsername, nextDisplay.trim(), req.user.id);
+    await stmtUpdateAccount.run(nextUsername, nextDisplay.trim(), req.user.id);
     if (newPassword) {
-      stmtUpdatePassword.run(bcrypt.hashSync(newPassword, 10), req.user.id);
-      stmtDeleteUserSessions.run(req.user.id); // force re-login everywhere
+      await stmtUpdatePassword.run(bcrypt.hashSync(newPassword, 10), req.user.id);
+      await stmtDeleteUserSessions.run(req.user.id); // force re-login everywhere
     }
-    const user = stmtGetUserById.get(req.user.id);
-    if (newPassword) createSession(res, user.id); // keep this device signed in
+    const user = await stmtGetUserById.get(req.user.id);
+    if (newPassword) await createSession(res, user.id); // keep this device signed in
     res.json({ user: publicProfile(user) });
   });
 
   // -------------------------------------------------------------------------
   // Admin powers — server-enforced, admin accounts only
   // -------------------------------------------------------------------------
-  app.post('/api/admin', requireAuth, requireAdmin, (req, res) => {
+  app.post('/api/admin', requireAuth, requireAdmin, async (req, res) => {
     const { command, amount, pick, armor, bag } = req.body || {};
-    const row = stmtGetSave.get(req.user.id);
+    const row = await stmtGetSave.get(req.user.id);
     const save = row ? JSON.parse(row.save_json) : {};
     const clamp = (v, lo, hi, dflt) => {
       const n = Number(v);
@@ -393,8 +472,8 @@ async function main() {
         return res.status(400).json({ error: 'Unknown admin command.' });
     }
     const json = JSON.stringify(save);
-    stmtUpsertSave.run(req.user.id, json);
-    stmtUpdateUserCoins.run(coinsFromSave(save), req.user.id);
+    await stmtUpsertSave.run(req.user.id, json);
+    await stmtUpdateUserCoins.run(coinsFromSave(save), req.user.id);
     res.json({ ok: true, save });
   });
 
@@ -408,11 +487,15 @@ async function main() {
   });
 
   app.listen(PORT, () => {
-    console.log(`Miner Cat 2 listening on port ${PORT} (db: ${DB_PATH})`);
+    console.log(`Miner Cat 2 listening on port ${PORT} (${USE_PG ? 'Postgres' : 'local SQLite'})`);
   });
 }
 
-main().catch((err) => {
-  console.error('Failed to start server:', err);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error('Failed to start server:', err);
+    process.exit(1);
+  });
+}
+
+module.exports = { createPgDb, createSqlJsDb, toPg, SCHEMA_PG, SCHEMA_SQLITE };
