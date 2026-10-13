@@ -319,7 +319,7 @@ function updateMining(dt) {
       S.backpack[t.type] = (S.backpack[t.type] || 0) + 1;
       if (t.type === 'diamond') S.gems++;
     } else {
-      toast('Backpack full! Go to spawn to sell.');
+      toast('Backpack full! Tap "Sell backpack" to sell anywhere.');
     }
     unlockAch('rock-rookie');
     refreshUI();
