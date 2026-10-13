@@ -183,6 +183,8 @@ function blockAt(stage, x, y) {
   if (x <= 0 || x >= COLS - 1) return 'bedrock';       // world borders
   if (stage === 1 && x === SPAWN_X && y === 0) return 'bedrock'; // spawn block
   if (y < 0) return 'air';
+  // Admin's Lounge: flat wooden floor, no mining
+  if (stage === LOUNGE_STAGE) return y === 0 ? 'wood' : 'air';
   const key = stage + ':' + x + ':' + y;
   // Multiplayer and lounge worlds use shared cleared set
   if (stage === 1001 || stage === LOUNGE_STAGE) return MP.cleared.has(key) ? 'air' : genBlock(stage, x, y);
@@ -190,7 +192,7 @@ function blockAt(stage, x, y) {
   return genBlock(stage, x, y);
 }
 const isSolid = (t) => t !== 'air';
-const isMineable = (t) => t !== 'air' && t !== 'bedrock';
+const isMineable = (t) => t !== 'air' && t !== 'bedrock' && t !== 'wood';
 
 /* ------------------------------ physics -------------------------------- */
 const P = { w: 0.7, h: 0.95, speed: 6.5, jumpV: 12.5, grav: 32 };
@@ -615,6 +617,13 @@ function render(t) {
   const cw = canvas.clientWidth, ch = canvas.clientHeight;
   if (canvas.width !== Math.round(cw * dpr) || canvas.height !== Math.round(ch * dpr)) resize();
   const W = canvas.width / dpr, H = canvas.height / dpr;
+  // Admin's Lounge — draw the cozy room instead of blocks
+  if (S.inLounge) {
+    drawLounge(t);
+    drawCat(t);
+    drawMpPlayers();
+    return;
+  }
   // background
   if (S.stage === 1 && camY < 6) {
     const g = ctx.createLinearGradient(0, 0, 0, H);
@@ -650,6 +659,81 @@ function render(t) {
   }
   drawCat(t);
   drawMpPlayers();
+}
+
+// Admin's Lounge — a cozy room with couch and chairs (no mining here)
+function drawLounge(t) {
+  const W = canvas.width / dpr, H = canvas.height / dpr;
+  // Wall
+  const wg = ctx.createLinearGradient(0, 0, 0, H);
+  wg.addColorStop(0, '#3a2c22'); wg.addColorStop(1, '#2a2018');
+  ctx.fillStyle = wg; ctx.fillRect(0, 0, W, H);
+  // Wooden floor (bottom 30%)
+  const floorY = H * 0.7;
+  ctx.fillStyle = '#6b4a2f'; ctx.fillRect(0, floorY, W, H - floorY);
+  ctx.strokeStyle = '#5a3d26'; ctx.lineWidth = 2;
+  for (let y = floorY + 12; y < H; y += 18) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+  // Rug
+  ctx.fillStyle = '#8b2e2e';
+  const rugW = TILE * 8, rugH = TILE * 3;
+  ctx.fillRect(W / 2 - rugW / 2, floorY + 10, rugW, rugH);
+  ctx.strokeStyle = '#c9a227'; ctx.lineWidth = 3;
+  ctx.strokeRect(W / 2 - rugW / 2, floorY + 10, rugW, rugH);
+  // Sign
+  ctx.fillStyle = '#c9a227';
+  ctx.font = `bold ${Math.max(16, TILE * 0.5)}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillText("👑 Admin's Lounge", W / 2, H * 0.15);
+  // Couch (left)
+  drawCouch(W * 0.18, floorY);
+  // Chairs (right)
+  drawChair(W * 0.72, floorY, -1);
+  drawChair(W * 0.85, floorY, 1);
+  // Coffee table (center)
+  const tx = W / 2, ty = floorY + rugH / 2;
+  ctx.fillStyle = '#4a3320';
+  ctx.fillRect(tx - TILE * 1.2, ty - TILE * 0.25, TILE * 2.4, TILE * 0.5);
+  ctx.fillStyle = '#5a3d26';
+  ctx.fillRect(tx - TILE * 1.3, ty - TILE * 0.35, TILE * 2.6, TILE * 0.15);
+  // Lamp glow
+  const lg = ctx.createRadialGradient(W * 0.5, H * 0.3, 10, W * 0.5, H * 0.3, TILE * 4);
+  lg.addColorStop(0, 'rgba(255, 220, 130, 0.25)');
+  lg.addColorStop(1, 'rgba(255, 220, 130, 0)');
+  ctx.fillStyle = lg; ctx.fillRect(0, 0, W, H);
+}
+function drawCouch(x, floorY) {
+  const w = TILE * 3.2, h = TILE * 1.4;
+  const y = floorY - h;
+  // Base
+  ctx.fillStyle = '#7a3b2e';
+  ctx.fillRect(x - w / 2, y + TILE * 0.4, w, h - TILE * 0.4);
+  // Backrest
+  ctx.fillStyle = '#8b4a3a';
+  ctx.fillRect(x - w / 2, y, w, TILE * 0.6);
+  // Armrests
+  ctx.fillStyle = '#6b3327';
+  ctx.fillRect(x - w / 2 - TILE * 0.25, y + TILE * 0.3, TILE * 0.35, h - TILE * 0.3);
+  ctx.fillRect(x + w / 2 - TILE * 0.1, y + TILE * 0.3, TILE * 0.35, h - TILE * 0.3);
+  // Cushions
+  ctx.fillStyle = '#9b5a4a';
+  ctx.fillRect(x - w / 2 + TILE * 0.15, y + TILE * 0.65, w / 2 - TILE * 0.2, TILE * 0.45);
+  ctx.fillRect(x + TILE * 0.05, y + TILE * 0.65, w / 2 - TILE * 0.2, TILE * 0.45);
+}
+function drawChair(x, floorY, dir) {
+  const w = TILE * 1.2, h = TILE * 1.6;
+  const y = floorY - h;
+  // Backrest
+  ctx.fillStyle = '#5a4a6b';
+  ctx.fillRect(x - w / 2 + (dir * TILE * 0.2), y, w * 0.3, h * 0.6);
+  // Seat
+  ctx.fillStyle = '#6b5a7b';
+  ctx.fillRect(x - w / 2, y + h * 0.55, w, TILE * 0.35);
+  // Legs
+  ctx.fillStyle = '#3a2f45';
+  ctx.fillRect(x - w / 2 + 2, y + h * 0.55 + TILE * 0.35, 4, floorY - (y + h * 0.55 + TILE * 0.35));
+  ctx.fillRect(x + w / 2 - 6, y + h * 0.55 + TILE * 0.35, 4, floorY - (y + h * 0.55 + TILE * 0.35));
 }
 
 /* -------------------------------- input -------------------------------- */
@@ -718,7 +802,7 @@ function toast(msg) {
 }
 function refreshStageHeader() {
   if (S.inLounge) {
-    $('stage-title').textContent = `🛋️ Admin Lounge`;
+    $('stage-title').textContent = `👑 Admin's Lounge`;
     $('stage-sub').textContent = 'Admins only!';
     return;
   }
