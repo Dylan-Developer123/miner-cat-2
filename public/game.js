@@ -168,6 +168,7 @@ function genBlock(stage, x, y) {
 
 function blockAt(stage, x, y) {
   if (x <= 0 || x >= COLS - 1) return 'bedrock';       // world borders
+  if (stage === 1 && x === SPAWN_X && y === 0) return 'bedrock'; // spawn block
   if (y < 0) return 'air';
   const key = stage + ':' + x + ':' + y;
   if (S.cleared.has(key)) return 'air';
