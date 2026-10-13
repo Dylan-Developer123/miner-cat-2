@@ -395,6 +395,12 @@ function resize() {
 }
 window.addEventListener('resize', resize);
 window.addEventListener('orientationchange', () => setTimeout(resize, 120));
+// Recompute whenever the canvas layout size changes for any reason
+// (flex layout settling, panels toggling, split-view, etc.) so the
+// 21-block world always fills the full canvas width.
+if (typeof ResizeObserver !== 'undefined') {
+  new ResizeObserver(() => resize()).observe(canvas);
+}
 
 function screenToTile(sx, sy) {
   const r = canvas.getBoundingClientRect();
