@@ -75,18 +75,7 @@ html, body {
 .btn.big { width: 100%; padding: 12px; font-size: 1.05em; margin-top: 10px; }
 .btn.small { padding: 6px 10px; font-size: 0.85em; }
 .btn.in-world { background: #4caf50; border-color: #388e3c; color: #fff; font-weight: bold; }
-/* Landing page mineral facts */
-.mineral-facts {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
-  margin: 16px 0; text-align: left;
-}
-.mineral-facts .fact {
-  background: rgba(0,0,0,0.25); border-radius: 8px; padding: 8px 10px;
-  display: flex; flex-direction: column;
-}
-.mineral-facts .fact b { font-size: 0.95em; }
-.mineral-facts .fact span { font-size: 0.8em; opacity: 0.75; }
-.auth-panel.landing { max-width: 520px; }
+
 /* Inventory hotbar */
 #inventory {
   display: flex; justify-content: center; padding: 6px; gap: 6px;
