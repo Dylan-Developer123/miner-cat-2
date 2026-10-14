@@ -157,9 +157,9 @@ const SCHEMA_SQLITE = `
   CREATE TABLE IF NOT EXISTS broadcasts (
     id         INTEGER PRIMARY KEY CHECK (id = 1),
     message    TEXT NOT NULL DEFAULT '',
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
-  INSERT INTO broadcasts (id, message) VALUES (1, '') ON CONFLICT (id) DO NOTHING;
+  INSERT OR IGNORE INTO broadcasts (id, message) VALUES (1, '');
 `;
 
 const SCHEMA_PG = `
@@ -548,6 +548,7 @@ async function main() {
         if (pick !== undefined) save.pickLevel = clamp(pick, 1, 50, save.pickLevel || 1);
         if (armor !== undefined) save.armorLevel = clamp(armor, 1, 50, save.armorLevel || 1);
         if (bag !== undefined) save.bagLevel = clamp(bag, 1, 50, save.bagLevel || 1);
+        save.enchants = { swift: 5, bouncy: 5, lucky: 5, hardy: 4, lava: 5 };
         break;
       case 'stage100':
         save.stage = 100;

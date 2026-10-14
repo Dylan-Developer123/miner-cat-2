@@ -116,6 +116,7 @@ const S = {
   health: MAX_HP, god: false,
   backpack: {},                  // oreType -> count
   achievements: [],
+  enchants: {},                  // enchantId -> level (bought with gems)
   seeds: {},                     // stage -> seed
   cleared: new Set(),            // "stage:x:y" of mined blocks
   placed: new Map(),             // "stage:x:y" -> blockType of placed blocks
@@ -140,7 +141,7 @@ function stateToSave() {
     pickLevel: S.pickLevel, armorLevel: S.armorLevel, bagLevel: S.bagLevel,
     stage: S.stage, depth: S.depth, maxDepth: S.maxDepth,
     px: S.px, py: S.py, health: S.health, god: !!S.god,
-    backpack: S.backpack, achievements: S.achievements,
+    backpack: S.backpack, achievements: S.achievements, enchants: S.enchants,
     seeds: S.seeds, cleared: [...S.cleared].slice(-20000),
     placed: [...S.placed.entries()].slice(-5000),
   };
@@ -151,7 +152,8 @@ function loadSave(save) {
   S.stage = save.stage || 1; S.depth = save.depth | 0; S.maxDepth = save.maxDepth | 0;
   S.px = (typeof save.px === 'number') ? save.px : SPAWN_X + 0.5;
   S.py = (typeof save.py === 'number') ? save.py : -0.5;
-  S.health = (typeof save.health === 'number') ? Math.min(MAX_HP, save.health) : MAX_HP;
+  S.enchants = (save.enchants && typeof save.enchants === 'object' && !Array.isArray(save.enchants)) ? save.enchants : {};
+  S.health = (typeof save.health === 'number') ? Math.min(maxHp(), save.health) : maxHp();
   S.god = !!save.god;
   S.backpack = save.backpack || {};
   S.achievements = Array.isArray(save.achievements) ? save.achievements : [];
@@ -212,7 +214,7 @@ function solidTile(tx, ty) {
 function movePlayer(dt) {
   // horizontal input
   const left = input.left, right = input.right;
-  const target = (right ? P.speed : 0) - (left ? P.speed : 0);
+  const target = (right ? effSpeed() : 0) - (left ? effSpeed() : 0);
   S.vx += (target - S.vx) * Math.min(1, dt * 14);
   if (target !== 0) S.facing = target > 0 ? 1 : -1;
 
@@ -254,7 +256,7 @@ function movePlayer(dt) {
   }
   // jump
   if (input.jumpQueued && S.onGround) {
-    S.vy = -P.jumpV; S.onGround = false;
+    S.vy = -effJumpV(); S.onGround = false;
   }
   input.jumpQueued = false;
 
@@ -286,9 +288,9 @@ function movePlayer(dt) {
   // lava damage (25 dps, reduced by armor)
   const touchingLava = tilesOverlap('lava');
   if (touchingLava) {
-    hurt(LAVA_DPS * (1 - armorReduction()) * dt);
-  } else if (performance.now() - S.lastHurtAt > 4000 && S.health < MAX_HP) {
-    S.health = Math.min(MAX_HP, S.health + 3 * dt); // regen out of danger
+    hurt(LAVA_DPS * (1 - armorReduction()) * lavaMult() * dt);
+  } else if (performance.now() - S.lastHurtAt > 4000 && S.health < maxHp()) {
+    S.health = Math.min(maxHp(), S.health + 3 * dt); // regen out of danger
   }
 }
 
@@ -306,7 +308,7 @@ function hurt(amount) {
   S.health -= amount;
   S.lastHurtAt = performance.now();
   if (S.health <= 0) {
-    S.health = MAX_HP;
+    S.health = maxHp();
     goToSpawn(false);
     toast('You melted! Respawned at spawn.');
   }
@@ -400,10 +402,46 @@ function buyUpgrade(kind) {
   toast('Upgrade purchased!');
   refreshUI();
 }
+
+/* ------------------------------ enchants ------------------------------- */
+// Player enchantments, bought with 💎 gems (earned from diamond blocks).
+const ENCHANTS = [
+  { id: 'swift',  name: 'Swift Paws',  icon: '🐾', max: 5, desc: '+8% move speed / level' },
+  { id: 'bouncy', name: 'Bouncy Paws',  icon: '🦘', max: 5, desc: '+10% jump power / level' },
+  { id: 'lucky',  name: 'Lucky Paws',   icon: '🍀', max: 5, desc: '+10% coins from selling / level' },
+  { id: 'hardy',  name: 'Hardy Heart',  icon: '❤️', max: 4, desc: '+25 max health / level' },
+  { id: 'lava',   name: 'Lava Paws',    icon: '🛡️', max: 5, desc: '−10% lava damage / level' },
+];
+const enchDef = (id) => ENCHANTS.find((e) => e.id === id);
+const enchLvl = (id) => {
+  const e = enchDef(id); if (!e) return 0;
+  const v = S.enchants[id] | 0;
+  return Math.max(0, Math.min(e.max, v));
+};
+const enchCost = (id) => 2 * (enchLvl(id) + 1); // gems for the next level
+function buyEnchant(id) {
+  const e = enchDef(id); if (!e) return;
+  const lvl = enchLvl(id);
+  if (lvl >= e.max) { toast('Max level!'); return; }
+  const cost = enchCost(id);
+  if (S.gems < cost) { toast('Not enough gems! Mine diamonds 💎'); return; }
+  S.gems -= cost;
+  S.enchants[id] = lvl + 1;
+  if (id === 'hardy') S.health = Math.min(maxHp(), S.health + 25); // heal the new hearts
+  toast(`✨ ${e.icon} ${e.name} Lv ${lvl + 1}!`);
+  refreshUI(); saveNow(true);
+}
+// effect helpers
+const maxHp = () => MAX_HP + 25 * enchLvl('hardy');
+const effSpeed = () => P.speed * (1 + 0.08 * enchLvl('swift'));
+const effJumpV = () => P.jumpV * (1 + 0.10 * enchLvl('bouncy'));
+const sellMult = () => 1 + 0.10 * enchLvl('lucky');
+const lavaMult = () => 1 - 0.10 * enchLvl('lava');
 function sellBackpack() {
   let total = 0;
   for (const [type, n] of Object.entries(S.backpack)) total += (BLOCKS[type]?.value || 0) * n;
   if (total === 0) { toast('Backpack is empty.'); return; }
+  total = Math.round(total * sellMult());
   S.coins += total;
   S.backpack = {};
   unlockAch('coin-starter');
@@ -415,6 +453,7 @@ function goToSpawn(sell = true) {
   if (sell) {
     let total = 0;
     for (const [type, n] of Object.entries(S.backpack)) total += (BLOCKS[type]?.value || 0) * n;
+    total = Math.round(total * sellMult());
     if (total > 0) { S.coins += total; toast(`Teleported to spawn — sold backpack for ${total} coins!`); }
     else toast('Teleported to spawn.');
     S.backpack = {};
@@ -430,7 +469,7 @@ function goToSpawn(sell = true) {
     S.stage = 1;
   }
   S.px = SPAWN_X + 0.5; S.py = -0.5;
-  S.vx = 0; S.vy = 0; S.health = MAX_HP;
+  S.vx = 0; S.vy = 0; S.health = maxHp();
   refreshStageHeader(); refreshUI();
 }
 function unlockAch(id) {
@@ -939,7 +978,7 @@ function refreshUI() {
   $('stat-pick').textContent = S.pickLevel;
   $('stat-hp').textContent = Math.ceil(S.health);
   renderInventory();
-  $('health-fill').style.width = (S.health / MAX_HP * 100) + '%';
+  $('health-fill').style.width = (S.health / maxHp() * 100) + '%';
   $('health-fill').style.background = S.health > 50 ? 'var(--green)' : S.health > 25 ? 'var(--accent)' : 'var(--red)';
   $('hud-text').textContent = `Stage ${S.stage} · Depth ${S.depth} · Bag ${bagCount()}/${bagCapacity()}`;
 
@@ -976,6 +1015,26 @@ function refreshUI() {
     btn.onclick = () => buyUpgrade(u.kind);
     row.appendChild(btn);
     ul.appendChild(row);
+  }
+
+  // player enchants (bought with gems)
+  const el2 = $('enchant-list');
+  if (el2) {
+    el2.innerHTML = '';
+    for (const e of ENCHANTS) {
+      const lvl = enchLvl(e.id);
+      const maxed = lvl >= e.max;
+      const erow = document.createElement('div');
+      erow.className = 'upg-row';
+      erow.innerHTML = `<div class="uinfo"><b>${e.icon} ${e.name} <span class="muted">Lv ${lvl}/${e.max}</span></b><small>${e.desc}</small></div>`;
+      const ebtn = document.createElement('button');
+      ebtn.className = 'btn small' + (maxed ? '' : ' primary');
+      ebtn.textContent = maxed ? 'MAX' : `💎 ${enchCost(e.id)}`;
+      ebtn.disabled = maxed;
+      ebtn.onclick = () => buyEnchant(e.id);
+      erow.appendChild(ebtn);
+      el2.appendChild(erow);
+    }
   }
 
   // achievements
@@ -1044,7 +1103,7 @@ function loop(t) {
   render(t);
   // cheap per-frame HUD numbers
   $('stat-hp').textContent = Math.ceil(S.health);
-  $('health-fill').style.width = (S.health / MAX_HP * 100) + '%';
+  $('health-fill').style.width = (S.health / maxHp() * 100) + '%';
 }
 
 /* ------------------------------- wiring -------------------------------- */
