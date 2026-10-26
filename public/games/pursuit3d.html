@@ -93,7 +93,7 @@ let state = 'wait';            // wait | play | over
 let mode = 'drive';            // drive | foot
 let keys = {}, clock, scene, camera, renderer;
 let cars = [], peds = [], cops = [], trafficTimer = 0, pedTimer = 0;
-let playerCar = null, char = null, charVel = { x: 0, z: 0 }, charAngle = 0;
+let playerCar = null, char = null, charVel = { x: 0, z: 0 }, charAngle = 0, charPhase = 0, charBlend = 0;
 let cash = 0, heat = 0, wanted = 0, health = 100, bustTimer = 0, seenByCop = false, evadeShown = false;
 let elapsed = 0, shake = 0, flashT = 0, submitted = false, heli = null, heliSpot = { x: 0, z: 0 };
 let smokePool = [], driftTime = 0, topSpeed = 0, sunLight = null, clouds = [], headlight = null;
@@ -505,19 +505,83 @@ function addCar(color, x, z, angle, kind, opts = {}) {
   cars.push(car);
   return car;
 }
-function makePedMesh(shirt, pants) {
+function makePedMesh(shirt, pants, opts = {}) {
   const g = new THREE.Group();
-  const legs = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.75, 0.3), new THREE.MeshStandardMaterial({ color: pants, roughness: 0.9 }));
-  legs.position.y = 0.38; g.add(legs); g.userData.legs = legs;
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.7, 0.34), new THREE.MeshStandardMaterial({ color: shirt, roughness: 0.85 }));
-  torso.position.y = 1.1; g.add(torso); g.userData.torso = torso;
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.26, 10, 8), new THREE.MeshStandardMaterial({ color: 0xe8b98a, roughness: 0.65 }));
-  head.position.y = 1.72; g.add(head);
+  const SKINS = [0xf1c27d, 0xe0ac69, 0xc68642, 0x8d5524, 0xffdbac];
+  const HAIRS = [0x191410, 0x3a2818, 0x6e4f26, 0x9c6b30, 0xb8b0a4, 0x71291d];
+  const skinM = new THREE.MeshStandardMaterial({ color: opts.skin || SKINS[Math.floor(Math.random() * SKINS.length)], roughness: 0.6 });
+  const shirtM = new THREE.MeshStandardMaterial({ color: shirt, roughness: 0.85 });
+  const pantsM = new THREE.MeshStandardMaterial({ color: pants, roughness: 0.9 });
+  const shoeM = new THREE.MeshStandardMaterial({ color: 0x17181c, roughness: 0.7 });
+  const hairM = new THREE.MeshStandardMaterial({ color: opts.hair || HAIRS[Math.floor(Math.random() * HAIRS.length)], roughness: 0.95 });
+  const bx = (w, h, d, mat, x, y, z, parent) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); (parent || g).add(m); return m; };
+  // legs on hip pivots, with shoes
+  const mkLeg = side => {
+    const pivot = new THREE.Group(); pivot.position.set(0.14 * side, 0.84, 0);
+    bx(0.2, 0.78, 0.24, pantsM, 0, -0.39, 0, pivot);
+    bx(0.21, 0.1, 0.36, shoeM, 0, -0.77, -0.05, pivot);
+    g.add(pivot); return pivot;
+  };
+  const legL = mkLeg(-1), legR = mkLeg(1);
+  // hips + torso
+  bx(0.52, 0.22, 0.3, pantsM, 0, 0.9, 0);
+  const torso = bx(0.6, 0.62, 0.32, shirtM, 0, 1.32, 0);
+  // arms on shoulder pivots, with hands
+  const mkArm = side => {
+    const pivot = new THREE.Group(); pivot.position.set(0.39 * side, 1.58, 0);
+    bx(0.15, 0.66, 0.19, shirtM, 0, -0.3, 0, pivot);
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.085, 8, 6), skinM);
+    hand.position.y = -0.68; pivot.add(hand);
+    pivot.rotation.z = side * 0.08;
+    g.add(pivot); return pivot;
+  };
+  const armL = mkArm(-1), armR = mkArm(1);
+  // neck, head, hair (or a cap)
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, 0.12, 8), skinM);
+  neck.position.y = 1.68; g.add(neck);
+  const headG = new THREE.Group(); headG.position.y = 1.86; g.add(headG);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.21, 12, 10), skinM);
+  headG.add(head);
+  if (opts.hat || (!opts.hair && Math.random() < 0.22)) {
+    const hatM = new THREE.MeshStandardMaterial({ color: [0x2563eb, 0xdc2626, 0x111827, 0x16a34a][Math.floor(Math.random() * 4)], roughness: 0.8 });
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.04, 12), hatM);
+    brim.position.set(0, 0.1, -0.06); headG.add(brim);
+    const top = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.21, 0.17, 12), hatM);
+    top.position.y = 0.17; headG.add(top);
+  } else {
+    const hair = new THREE.Mesh(new THREE.SphereGeometry(0.225, 12, 10, 0, Math.PI * 2, 0, 1.85), hairM);
+    hair.position.y = 0.025; headG.add(hair);
+  }
+  const scale = 0.95 + Math.random() * 0.13;
+  g.scale.set(scale, scale, scale);
+  g.userData.legL = legL; g.userData.legR = legR;
+  g.userData.armL = armL; g.userData.armR = armR;
+  g.userData.torso = torso; g.userData.head = headG;
   g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   return g;
 }
+function animatePerson(mesh, phase, amt) {
+  const u = mesh.userData;
+  if (!u.legL) return;
+  const sw = Math.sin(phase);
+  u.legL.rotation.x = sw * 0.62 * amt;
+  u.legR.rotation.x = -sw * 0.62 * amt;
+  u.armL.rotation.x = -sw * 0.5 * amt;
+  u.armR.rotation.x = sw * 0.5 * amt;
+  u.armL.rotation.z = 0.08 + amt * 0.04;
+  u.armR.rotation.z = -0.08 - amt * 0.04;
+  if (u.torso) u.torso.rotation.z = sw * 0.035 * amt;
+  if (u.head) u.head.rotation.x = Math.abs(Math.cos(phase)) * 0.05 * amt;
+}
+function splayArms(mesh) {
+  const u = mesh.userData;
+  if (!u.legL) return;
+  u.armL.rotation.z = 1.15; u.armR.rotation.z = -1.15;
+  u.armL.rotation.x = 0.35; u.armR.rotation.x = -0.25;
+  u.legL.rotation.x = 0.12; u.legR.rotation.x = -0.18;
+}
 function addPed(x, z) {
-  const mesh = makePedMesh([0xef4444, 0x3b82f6, 0x22c55e, 0xf59e0b, 0xa855f7, 0xec4899][Math.floor(Math.random() * 6)], 0x1f2937);
+  const mesh = makePedMesh([0xef4444, 0x3b82f6, 0x22c55e, 0xf59e0b, 0xa855f7, 0xec4899, 0xf8fafc, 0x14b8a6][Math.floor(Math.random() * 8)], [0x1f2937, 0x374151, 0x4a3728, 0x1e3a5f, 0x3f3f46][Math.floor(Math.random() * 5)]);
   mesh.position.set(x, 0, z);
   scene.add(mesh);
   const ped = { mesh, x, z, angle: Math.random() * 6.28, speed: 1.6 + Math.random(), tx: x, tz: z, state: 'walk', timer: 0, phase: Math.random() * 6 };
@@ -880,7 +944,7 @@ function updatePeds(dt) {
     } else if (ped.state === 'dive') {
       ped.x += (ped.dvx || 0) * dt; ped.z += (ped.dvz || 0) * dt;
       ped.mesh.position.y = Math.sin(Math.min(1, 0.65 - ped.timer + 0.65) * Math.PI) * 0.4;
-      if (ped.timer <= 0) { ped.state = 'down'; ped.timer = 0.9; ped.mesh.rotation.x = 0.5; }
+      if (ped.timer <= 0) { ped.state = 'down'; ped.timer = 0.9; ped.mesh.rotation.x = 0.5; splayArms(ped.mesh); }
     } else if (ped.state === 'down') {
       if (ped.timer <= 0) { ped.state = 'flee'; ped.mesh.rotation.x = 0; ped.mesh.position.y = 0; pickPedTarget(ped); }
     } else if (ped.state === 'hit') {
@@ -891,14 +955,14 @@ function updatePeds(dt) {
       if (mvx || mvz) ped.angle = Math.atan2(-mvx, -mvz);
       ped.phase += dt * spd * 2.4;
       ped.mesh.position.y = Math.abs(Math.sin(ped.phase)) * 0.07;
-      ped.mesh.userData.legs.rotation.x = Math.sin(ped.phase) * 0.45;
+      animatePerson(ped.mesh, ped.phase, ped.state === 'flee' ? 1.45 : 1);
     }
     // car hit
     if (ped.state !== 'hit' && ped.state !== 'down') {
       for (const c of cars) {
         const cp = c.mesh.position;
         if (Math.hypot(ped.x - cp.x, ped.z - cp.z) < 1.25 && Math.abs(c.speed) > 3.5) {
-          ped.state = 'hit'; ped.timer = 3.2; ped.mesh.rotation.x = Math.PI / 2; ped.mesh.position.y = 0.25;
+          ped.state = 'hit'; ped.timer = 3.2; ped.mesh.rotation.x = Math.PI / 2; ped.mesh.position.y = 0.25; splayArms(ped.mesh);
           if (c === playerCar && mode === 'drive') { addHeat(38, '🚶 Careful! You clipped a pedestrian!'); shake = Math.max(shake, 0.3); }
           break;
         }
@@ -963,10 +1027,13 @@ function updateChar(dt) {
     charAngle += wrapA(targetA - charAngle) * Math.min(1, dt * 12);
     char.position.x += ix * spd * dt;
     char.position.z += iz * spd * dt;
-    char.userData.legs.rotation.x = Math.sin(performance.now() / (spd > 7 ? 55 : 80)) * 0.55;
-    char.position.y = Math.abs(Math.sin(performance.now() / 90)) * 0.06;
+    charPhase += dt * (spd > 7 ? 13.5 : 9.5);
+    charBlend = Math.min(1, charBlend + dt * 8);
+    animatePerson(char, charPhase, charBlend * (spd > 7 ? 1.45 : 1));
+    char.position.y = Math.abs(Math.sin(charPhase)) * 0.05;
   } else {
-    char.userData.legs.rotation.x *= 0.8;
+    charBlend = Math.max(0, charBlend - dt * 8);
+    animatePerson(char, charPhase, charBlend);
     char.position.y = 0;
   }
   // collisions: buildings + cars push-out
@@ -1018,7 +1085,7 @@ function reset() {
   mode = 'drive';
   playerCar = addCar(0xe11d48, 3.4, 40, 0, 'parked', { spoiler: true, premium: true, power: 1.04 });
   if (char) scene.remove(char);
-  char = makePedMesh(0xfacc15, 0x374151);
+  char = makePedMesh(0xfacc15, 0x374151, { skin: 0xe0ac69, hair: 0x2b2118 });
   char.visible = false;
   scene.add(char);
   for (let i = 0; i < 8; i++) spawnTrafficCar();
