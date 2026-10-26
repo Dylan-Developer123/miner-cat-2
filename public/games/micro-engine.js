@@ -357,6 +357,7 @@ function frame(now) {
 }
 
 // --- Site account (the Miner Cat account works everywhere) ---
+{ const s = document.createElement('script'); s.src = '/games/admin-panel.js'; document.body.appendChild(s); }
 let ME = null;
 const esc = s => String(s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
 const GAME_KEY = cfg ? 'micro-' + cfg.slug : '';
