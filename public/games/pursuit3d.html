@@ -83,7 +83,7 @@ if (!window.THREE) { $('msg').textContent = '⚠️ The 3D library could not loa
 const PITCH = 72;              // distance between road centers
 const ROAD_W = 16;             // road width
 const BLOCK = PITCH - ROAD_W;  // building block size (56)
-const GRID = 2;                // roads at -144,-72,0,72,144
+const GRID = 3;                // roads at -144,-72,0,72,144
 const CITY = GRID * PITCH + 40; // playable half-extent (~184)
 const roadCoord = k => k * PITCH;
 let colliders = [];            // building AABBs {x1,z1,x2,z2}
@@ -96,7 +96,7 @@ let cars = [], peds = [], cops = [], trafficTimer = 0, pedTimer = 0;
 let playerCar = null, char = null, charVel = { x: 0, z: 0 }, charAngle = 0;
 let cash = 0, heat = 0, wanted = 0, health = 100, bustTimer = 0, seenByCop = false, evadeShown = false;
 let elapsed = 0, shake = 0, flashT = 0, submitted = false, heli = null, heliSpot = { x: 0, z: 0 };
-let smokePool = [], driftTime = 0, topSpeed = 0, sunLight = null;
+let smokePool = [], driftTime = 0, topSpeed = 0, sunLight = null, clouds = [], headlight = null;
 // ============================== TEXTURES ==============================
 function buildingTexture(base, lit) {
   const cv = document.createElement('canvas'); cv.width = 256; cv.height = 512;
@@ -201,6 +201,25 @@ function crosswalkTexture() {
   const t = new THREE.CanvasTexture(cv); t.encoding = THREE.sRGBEncoding;
   return t;
 }
+function sidewalkTexture() {
+  const cv = document.createElement('canvas'); cv.width = 256; cv.height = 256;
+  const x = cv.getContext('2d');
+  x.fillStyle = '#232529'; x.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 1100; i++) {
+    const v = Math.random();
+    x.fillStyle = v < 0.5 ? `rgba(0,0,0,${Math.random() * 0.16})` : `rgba(200,205,215,${Math.random() * 0.07})`;
+    x.fillRect(Math.random() * 256, Math.random() * 256, 1.8, 1.8);
+  }
+  x.strokeStyle = 'rgba(0,0,0,.55)'; x.lineWidth = 3;
+  x.strokeRect(0, 0, 256, 256);
+  x.beginPath(); x.moveTo(128, 0); x.lineTo(128, 256); x.moveTo(0, 128); x.lineTo(256, 128); x.stroke();
+  x.strokeStyle = 'rgba(255,255,255,.05)'; x.lineWidth = 1;
+  x.strokeRect(3, 3, 250, 250);
+  const t = new THREE.CanvasTexture(cv);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.encoding = THREE.sRGBEncoding; t.anisotropy = 8;
+  return t;
+}
 function makeSignTexture(word, color) {
   const cv = document.createElement('canvas'); cv.width = 256; cv.height = 64;
   const x = cv.getContext('2d');
@@ -242,9 +261,10 @@ function buildCity() {
   sunLight.shadow.bias = -0.0006; sunLight.shadow.normalBias = 0.03;
   scene.add(sunLight); scene.add(sunLight.target);
   // surrounding bay (water) + city ground
-  const water = new THREE.Mesh(new THREE.PlaneGeometry(1200, 1200), new THREE.MeshStandardMaterial({ color: 0x11395e, roughness: 0.12, metalness: 0.6, envMapIntensity: 1.2 }));
+  const water = new THREE.Mesh(new THREE.PlaneGeometry(2400, 2400), new THREE.MeshStandardMaterial({ color: 0x11395e, roughness: 0.12, metalness: 0.6, envMapIntensity: 1.2 }));
   water.rotation.x = -Math.PI / 2; water.position.y = -0.4; scene.add(water);
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(CITY * 2 + ROAD_W, CITY * 2 + ROAD_W), new THREE.MeshStandardMaterial({ color: 0x494d54, roughness: 1 }));
+  const swTex = sidewalkTexture(); swTex.repeat.set(30, 30);
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(CITY * 2 + ROAD_W, CITY * 2 + ROAD_W), new THREE.MeshStandardMaterial({ map: swTex, roughness: 1 }));
   ground.rotation.x = -Math.PI / 2; ground.position.y = -0.06; ground.receiveShadow = true; scene.add(ground);
   // roads: horizontal & vertical strips
   const roadTex = roadTextures();
@@ -319,10 +339,30 @@ function buildCity() {
     sprinkleProps(cx, cz);
   }
   // streetlights along roads
-  for (let k = -GRID; k <= GRID; k++) for (let s = -GRID * PITCH; s <= GRID * PITCH; s += 36) {
+  for (let k = -GRID; k <= GRID; k++) for (let s = -GRID * PITCH; s <= GRID * PITCH; s += 54) {
     addStreetlight(roadCoord(k) + ROAD_W / 2 + 1.5, s + 10);
     addStreetlight(s + 10, roadCoord(k) + ROAD_W / 2 + 1.5);
   }
+  // distant skyline silhouettes on the horizon
+  const silMat = new THREE.MeshBasicMaterial({ color: 0x12141f });
+  for (let i = 0; i < 30; i++) {
+    const a = (i / 30) * Math.PI * 2 + Math.random() * 0.15;
+    const r = 410 + Math.random() * 90, hgt = 26 + Math.random() * 55;
+    const b = new THREE.Mesh(new THREE.BoxGeometry(22 + Math.random() * 18, hgt, 22), silMat);
+    b.position.set(Math.cos(a) * r, hgt / 2 - 2, Math.sin(a) * r);
+    scene.add(b);
+  }
+  // drifting sunset clouds
+  const cloudTex = glowTexture();
+  for (let i = 0; i < 11; i++) {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: cloudTex, color: 0xd9a08a, transparent: true, opacity: 0.13 + Math.random() * 0.12, depthWrite: false }));
+    sp.scale.set(150 + Math.random() * 160, 34 + Math.random() * 26, 1);
+    sp.position.set((Math.random() - 0.5) * 1000, 95 + Math.random() * 60, (Math.random() - 0.5) * 1000);
+    scene.add(sp); clouds.push(sp);
+  }
+  // one real headlight beam that follows whatever car you drive
+  headlight = new THREE.SpotLight(0xffd9a0, 0, 62, 0.46, 0.55, 1);
+  scene.add(headlight); scene.add(headlight.target);
   // smoke pool
   const st = smokeTexture();
   for (let i = 0; i < 70; i++) {
@@ -458,7 +498,7 @@ function addCar(color, x, z, angle, kind, opts = {}) {
   const car = {
     id: carId++, mesh, kind, // 'traffic' | 'cop' | 'parked'
     angle, vx: 0, vz: 0, steerVis: 0,
-    speed: 0, targetSpeed: 0, spin: 0, dead: false, steerCur: 0,
+    speed: 0, targetSpeed: 0, spin: 0, dead: false, steerCur: 0, pedalT: 0, pedalB: 0, gear: 1, shiftT: 0, prevVF: 0, longA: 0, wheelspin: false, skid: false, power: opts.power || 1,
     ai: { axis: opts.axis || 'z', dir: opts.dir || -1, lane: opts.lane || 0, turnT: 2 + Math.random() * 5, panic: 0, stuck: 0 },
     nearMissed: false, wrecked: false
   };
@@ -497,52 +537,83 @@ function pickPedTarget(ped) {
 // ============================== VEHICLE PHYSICS ==============================
 const fwd = car => ({ x: -Math.sin(car.angle), z: -Math.cos(car.angle) });
 function stepVehicle(car, dt, input) {
-  const F = fwd(car);
-  const R = { x: -F.z, z: F.x };
-  let vF = car.vx * F.x + car.vz * F.z;
-  let vL = car.vx * R.x + car.vz * R.z;
-  // steering: the wheel turns progressively and self-centers — no instant snap, no twitch
+  // --- pedals press/release progressively, like real pedals ---
+  const thrTgt = Math.max(0, Math.min(1, input.throttle || 0));
+  const brkTgt = input.brake ? (typeof input.brake === 'number' ? Math.min(1, input.brake) : 1) : 0;
+  car.pedalT += Math.max(-2.8 * dt, Math.min(3.4 * dt, thrTgt - car.pedalT));
+  car.pedalB += Math.max(-5 * dt, Math.min(6.5 * dt, brkTgt - car.pedalB));
+  // --- steering: progressive, self-centering, less lock at speed ---
   const steerTarget = Math.max(-1, Math.min(1, input.steer || 0));
   const steerRate = steerTarget === 0 ? 4.6 : 3.1;
-  car.steerCur = (car.steerCur || 0) + Math.max(-steerRate * dt, Math.min(steerRate * dt, steerTarget - (car.steerCur || 0)));
-  const steerAuthority = Math.max(-1, Math.min(1, vF / 4.5));
-  car.angle += car.steerCur * 1.75 * dt * steerAuthority * (input.handbrake ? 1.3 : 1);
-  const F2 = fwd(car), R2 = { x: -F2.z, z: F2.x };
-  // recompute components in the new frame
-  vF = car.vx * F2.x + car.vz * F2.z;
-  vL = car.vx * R2.x + car.vz * R2.z;
-  // engine / brake / reverse
-  if (input.throttle > 0) vF += input.throttle * 30 * dt;
-  if (input.brake) {
-    if (vF > 0.5) vF -= 36 * dt;
-    else vF = Math.max(-13, vF - 16 * dt);
+  car.steerCur += Math.max(-steerRate * dt, Math.min(steerRate * dt, steerTarget - car.steerCur));
+  const F0 = fwd(car);
+  const vF0 = car.vx * F0.x + car.vz * F0.z;
+  const lock = 1 / (1 + Math.abs(vF0) * 0.026);
+  const authority = Math.max(-1, Math.min(1, vF0 / 4.5));
+  let omega = car.steerCur * lock * 1.6 * authority * (input.handbrake ? 1.35 : 1);
+  // friction circle: tires can only pull so hard sideways — demand more and you understeer wide
+  const latAccDemand = Math.abs(omega * vF0);
+  const gripBudget = input.handbrake ? 999 : 30;
+  if (latAccDemand > gripBudget && Math.abs(vF0) > 0.1) omega *= gripBudget / latAccDemand;
+  car.angle += omega * dt;
+  const F = fwd(car), R = { x: -F.z, z: F.x };
+  let vF = car.vx * F.x + car.vz * F.z;
+  let vL = car.vx * R.x + car.vz * R.z;
+  // --- 5 gears: pull steps down as speed climbs, with a shift pause ---
+  const spd = Math.abs(vF);
+  const gear = spd < 9 ? 1 : spd < 17 ? 2 : spd < 25 ? 3 : spd < 33 ? 4 : 5;
+  if (gear > car.gear && car.pedalT > 0.45) car.shiftT = 0.26;
+  car.gear = gear;
+  if (car.shiftT > 0) car.shiftT -= dt;
+  const gearMult = [0, 1.3, 1.02, 0.85, 0.7, 0.58][gear];
+  // --- traction: stomp it off the line and the wheels just spin ---
+  car.wheelspin = car.pedalT > 0.72 && spd < 7 && !input.handbrake;
+  let force = car.pedalT * 33 * gearMult * (car.power || 1);
+  if (car.shiftT > 0) force *= 0.25;
+  if (car.wheelspin) force *= 0.5;
+  if (input.handbrake) force *= 0.3;
+  vF += force * dt * (vF < -0.5 ? 0.35 : 1);
+  // automatic-transmission creep
+  if (car.pedalT < 0.03 && car.pedalB < 0.03 && !input.handbrake && vF >= 0 && vF < 1.6) vF += 2.0 * dt;
+  // --- brakes: stomp them at speed and they lock (longer stop, no grip) ---
+  car.skid = car.pedalB > 0.85 && vF > 11;
+  if (car.pedalB > 0.02) {
+    if (vF > 0.5) vF -= car.pedalB * 40 * (car.skid ? 0.82 : 1) * dt;
+    else vF = Math.max(-13, vF - car.pedalB * 17 * dt);
   }
-  // drag + rolling resistance (top speed ~39 u/s)
-  vF -= vF * 0.35 * dt + Math.sign(vF) * vF * vF * 0.011 * dt;
-  if (!input.throttle && !input.brake) vF -= Math.sign(vF) * Math.min(Math.abs(vF), 2.2 * dt);
-  // grip: kill lateral velocity (low grip while handbraking = drift)
-  const grip = input.handbrake ? 1.7 : 8.0;
+  // --- drag ---
+  vF -= vF * 0.3 * dt + Math.sign(vF) * vF * vF * 0.006 * dt;
+  if (car.pedalT < 0.05 && car.pedalB < 0.05) vF -= Math.sign(vF) * Math.min(Math.abs(vF), 2.4 * dt);
+  // --- lateral grip (handbrake / locked brakes / overcooked corner = slide) ---
+  let grip = input.handbrake ? 1.6 : car.skid ? 2.8 : 8.0;
+  if (!input.handbrake && !car.skid && latAccDemand > gripBudget * 0.8) grip = 5.0;
   vL *= Math.exp(-grip * dt);
   if (input.handbrake) vF -= Math.sign(vF) * Math.min(Math.abs(vF), 5 * dt);
-  car.vx = F2.x * vF + R2.x * vL;
-  car.vz = F2.z * vF + R2.z * vL;
+  car.vx = F.x * vF + R.x * vL;
+  car.vz = F.z * vF + R.z * vL;
   car.mesh.position.x += car.vx * dt;
   car.mesh.position.z += car.vz * dt;
   car.speed = vF;
   car.latV = vL;
   car.mesh.position.x = Math.max(-CITY - 6, Math.min(CITY + 6, car.mesh.position.x));
   car.mesh.position.z = Math.max(-CITY - 6, Math.min(CITY + 6, car.mesh.position.z));
-  // visuals: body roll/pitch + wheel spin
+  // --- weight transfer: squat on gas, dive on brakes, lean out of corners ---
+  const longAInst = (vF - car.prevVF) / Math.max(dt, 0.001);
+  car.prevVF = vF;
+  car.longA += (longAInst - car.longA) * Math.min(1, dt * 7);
+  const latA = omega * vF;
   car.mesh.rotation.y = car.angle;
-  car.mesh.rotation.z = -vL * 0.012 - (car.steerCur || 0) * Math.min(1, Math.abs(vF) / 20) * 0.04;
-  car.mesh.rotation.x = Math.max(-0.05, Math.min(0.05, (input.throttle ? -0.012 : 0.01)));
+  car.mesh.rotation.x = Math.max(-0.05, Math.min(0.05, car.longA * 0.0016));
+  car.mesh.rotation.z = Math.max(-0.07, Math.min(0.07, -latA * 0.0028));
   for (const w of car.mesh.userData.wheels || []) w.rotation.x += vF * dt / 0.37;
-  car.steerVis = car.steerCur || 0;
+  car.steerVis = car.steerCur;
+  car.gearTxt = vF < -0.5 ? 'R' : String(gear);
   return { vF, vL };
 }
-function smoke(x, y, z, big) {
+function smoke(x, y, z, big, color) {
   const s = smokePool.find(s => s.life <= 0);
   if (!s) return;
+  s.sp.material.color.setHex(color || 0xffffff);
   s.sp.visible = true;
   s.sp.position.set(x, y, z);
   s.max = s.life = 0.5 + Math.random() * 0.3;
@@ -684,7 +755,7 @@ function trafficInput(car, dt) {
   const input = { steer: steerTo(car, aimX, aimZ, 2.0), throttle: 0, brake: false, handbrake: false };
   const cruise = ai.panic > 0 ? 24 : (car.cruise || 15);
   const ahead = aheadEntity(car, 10);
-  if (ahead !== null && ahead < 6) input.brake = true;
+  if (ahead !== null && ahead < 6) input.brake = car.speed > 1.2;
   else if (ahead !== null) input.throttle = car.speed < cruise * 0.5 ? 0.7 : 0;
   else input.throttle = car.speed < cruise ? 0.85 : 0;
   // intersection turn decision
@@ -762,6 +833,7 @@ function spawnCopCar() {
     x = Math.max(-CITY, Math.min(CITY, x)); z = Math.max(-CITY, Math.min(CITY, z));
     if (cars.some(c => Math.hypot(c.mesh.position.x - x, c.mesh.position.z - z) < 10)) continue;
     const cop = addCar(0x111827, x, z, 0, 'cop', { cop: true, premium: true });
+    cop.power = 1.13;
     cops.push(cop);
     return;
   }
@@ -944,7 +1016,7 @@ function reset() {
   cash = 0; heat = 0; wanted = 0; peakWanted = 0; health = 100; bustTimer = 0; elapsed = 0; submitted = false;
   topSpeed = 0; driftTime = 0; trafficTimer = 0; pedTimer = 0; copSpawnT = 0; seenByCop = false;
   mode = 'drive';
-  playerCar = addCar(0xe11d48, 3.4, 40, 0, 'parked', { spoiler: true, premium: true });
+  playerCar = addCar(0xe11d48, 3.4, 40, 0, 'parked', { spoiler: true, premium: true, power: 1.04 });
   if (char) scene.remove(char);
   char = makePedMesh(0xfacc15, 0x374151);
   char.visible = false;
@@ -977,7 +1049,7 @@ function hud() {
     $('bust-fill').style.width = Math.min(100, bustTimer / (mode === 'drive' ? 2 : 1.6) * 100) + '%';
   } else bw.style.display = 'none';
   $('speedHud').innerHTML = mode === 'drive' && playerCar
-    ? `${Math.round(Math.abs(playerCar.speed) * 2.24)}<small>MPH</small>`
+    ? `${Math.round(Math.abs(playerCar.speed) * 2.24)}<small>MPH · GEAR ${playerCar.gearTxt || 'D'}</small>`
     : `🚶<small>ON FOOT</small>`;
 }
 const mm = $('minimap').getContext('2d');
@@ -1060,6 +1132,15 @@ function animate() {
       }
       // near misses
       const F = fwd(playerCar), R = { x: -F.z, z: F.x };
+      if (playerCar.wheelspin) {
+        smoke(anchor.x - F.x * 1.45 + R.x * 0.85, 0.3, anchor.z - F.z * 1.45 + R.z * 0.85);
+        smoke(anchor.x - F.x * 1.45 - R.x * 0.85, 0.3, anchor.z - F.z * 1.45 - R.z * 0.85);
+      }
+      if (playerCar.skid) {
+        smoke(anchor.x + F.x * 1.45 + R.x * 0.85, 0.3, anchor.z + F.z * 1.45 + R.z * 0.85);
+        smoke(anchor.x + F.x * 1.45 - R.x * 0.85, 0.3, anchor.z + F.z * 1.45 - R.z * 0.85);
+      }
+      if (health < 35 && Math.random() < 0.4) smoke(anchor.x + F.x * 1.7, 1.0, anchor.z + F.z * 1.7, true, 0x232326);
       for (const t of cars) {
         if (t.kind !== 'traffic') continue;
         const rx = t.mesh.position.x - anchor.x, rz = t.mesh.position.z - anchor.z;
@@ -1174,7 +1255,8 @@ function animate() {
     let targetPos, look;
     if (mode === 'drive') {
       const F = fwd(playerCar), p = playerCar.mesh.position;
-      targetPos = { x: p.x - F.x * 11.5, y: 5.4, z: p.z - F.z * 11.5 };
+      const camDist = 11.5 + Math.abs(playerCar.speed) * 0.05;
+      targetPos = { x: p.x - F.x * camDist, y: 5.4 + Math.abs(playerCar.speed) * 0.008, z: p.z - F.z * camDist };
       look = { x: p.x + F.x * 9, y: 1.2, z: p.z + F.z * 9 };
     } else {
       const F = { x: -Math.sin(charAngle), z: -Math.cos(charAngle) };
@@ -1190,6 +1272,8 @@ function animate() {
       camera.position.y += (Math.random() - 0.5) * shake * 0.5;
       shake = Math.max(0, shake - dt * 1.5);
     }
+    const targetFov = mode === 'drive' && playerCar ? 66 + Math.min(11, Math.abs(playerCar.speed) * 0.3) : 66;
+    if (Math.abs(camera.fov - targetFov) > 0.05) { camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 4); camera.updateProjectionMatrix(); }
     camera.lookAt(look.x, look.y, look.z);
   }
   if (sunLight) {
@@ -1197,6 +1281,16 @@ function animate() {
     sunLight.target.position.set(anchor.x, 0, anchor.z);
     sunLight.target.updateMatrixWorld();
   }
+  if (headlight) {
+    if (mode === 'drive' && playerCar && state !== 'over') {
+      const F = fwd(playerCar), p = playerCar.mesh.position;
+      headlight.intensity = 2.1;
+      headlight.position.set(p.x + F.x * 1.6, 0.75, p.z + F.z * 1.6);
+      headlight.target.position.set(p.x + F.x * 34, 0, p.z + F.z * 34);
+      headlight.target.updateMatrixWorld();
+    } else headlight.intensity = 0;
+  }
+  for (const cl of clouds) { cl.position.x += dt * 1.1; if (cl.position.x > 560) cl.position.x = -560; }
   renderer.render(scene, camera);
 }
 // ============================== INPUT ==============================
