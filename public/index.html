@@ -2,219 +2,114 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Miner Cat 2</title>
-<link rel="stylesheet" href="styles.css?v=23">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dylan's Games — Play Free Games</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: #12121c; color: #eee; min-height: 100vh;
+  }
+  header {
+    background: linear-gradient(90deg, #1d1d30, #26264a);
+    padding: 18px 24px; display: flex; align-items: center; gap: 14px;
+    border-bottom: 3px solid #f5c542;
+    position: sticky; top: 0; z-index: 10;
+  }
+  header .logo { font-size: 34px; }
+  header h1 { font-size: 26px; letter-spacing: 0.5px; }
+  header h1 span { color: #f5c542; }
+  header p { opacity: 0.7; font-size: 14px; margin-left: auto; }
+  main { max-width: 1100px; margin: 0 auto; padding: 28px 18px 60px; }
+  .section-title { font-size: 20px; margin: 10px 0 16px; }
+  .grid {
+    display: grid; gap: 18px;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  }
+  .card {
+    background: #1e1e30; border-radius: 14px; overflow: hidden;
+    border: 2px solid #2c2c48; transition: transform .15s, border-color .15s;
+    text-decoration: none; color: inherit; display: flex; flex-direction: column;
+  }
+  .card:hover { transform: translateY(-4px); border-color: #f5c542; }
+  .card .art {
+    height: 130px; display: flex; align-items: center; justify-content: center;
+    font-size: 62px;
+  }
+  .card .body { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+  .card h2 { font-size: 19px; }
+  .card p { font-size: 13.5px; opacity: 0.75; line-height: 1.45; flex: 1; }
+  .tag {
+    display: inline-block; font-size: 11px; font-weight: bold; letter-spacing: 0.5px;
+    background: #f5c542; color: #191920; border-radius: 20px; padding: 2px 9px;
+    align-self: flex-start;
+  }
+  .tag.blue { background: #4fc3f7; }
+  .tag.green { background: #81c784; }
+  .tag.pink { background: #f48fb1; }
+  .play {
+    margin-top: 8px; background: #f5c542; color: #191920; font-weight: bold;
+    text-align: center; padding: 9px; border-radius: 9px; font-size: 15px;
+  }
+  .card:hover .play { background: #ffd95e; }
+  footer { text-align: center; opacity: 0.45; font-size: 13px; padding: 24px; }
+  @media (max-width: 560px) {
+    header p { display: none; }
+    header h1 { font-size: 21px; }
+  }
+</style>
 </head>
 <body>
-
-<!-- ============ LANDING / AUTH ============ -->
-<div id="auth-overlay" class="overlay hidden">
-  <div class="panel auth-panel">
-    <div class="auth-logo">⛏️</div>
-    <p class="eyebrow">MINER CAT 2</p>
-    <h1>Dig deep.<br>Get rich.</h1>
-    <p class="muted">Mine 100 layers of earth, sell your backpack, upgrade your gear, and climb the coins leaderboard.</p>
-    <div class="tabs">
-      <button id="tab-signup" class="tab active">Create account</button>
-      <button id="tab-signin" class="tab">Sign in</button>
-    </div>
-    <div id="auth-error" class="error hidden"></div>
-    <form id="auth-form">
-      <div id="field-displayname">
-        <label for="auth-displayname">Display name</label>
-        <input id="auth-displayname" type="text" maxlength="24" placeholder="enter text" autocomplete="nickname">
-        <small class="muted">This is what other miners see.</small>
+<header>
+  <div class="logo">🎮</div>
+  <h1>Dylan's <span>Games</span></h1>
+  <p>Free games — no downloads, just play</p>
+</header>
+<main>
+  <div class="section-title">🔥 Featured</div>
+  <div class="grid" style="margin-bottom:34px;">
+    <a class="card" href="/miner-cat-2">
+      <div class="art" style="background:linear-gradient(135deg,#3a2b18,#6d4c1e);">🐱⛏️</div>
+      <div class="body">
+        <span class="tag">MULTIPLAYER</span>
+        <h2>Miner Cat 2</h2>
+        <p>Dig through 100 stages, collect coins and gems, buy enchants, and mine together in the shared multiplayer world. Accounts, autosave, and a live leaderboard.</p>
+        <div class="play">▶ Play now</div>
       </div>
-      <label for="auth-username">Username</label>
-      <input id="auth-username" type="text" maxlength="32" placeholder="enter text" autocomplete="username">
-      <label for="auth-password">Password</label>
-      <input id="auth-password" type="password" placeholder="••••••••" autocomplete="current-password">
-      <small class="muted">Use at least 6 characters.</small>
-      <button type="submit" id="auth-submit" class="btn primary big">Create &amp; play</button>
-    </form>
-    <p class="muted" style="margin-top:12px;font-size:0.85em;">Your progress autosaves every minute.</p>
+    </a>
   </div>
-</div>
 
-<!-- ============ GAME LAYOUT ============ -->
-<div id="game-root" class="hidden">
-  <!-- Top stat bar -->
-  <div id="broadcast-bar" class="hidden">📢 <span class="broadcast-from">👑 OWNER:</span> <span id="broadcast-text"></span></div>
-  <header id="topbar" class="panel">
-    <div class="stat"><span class="stat-label">COINS</span><span class="stat-value">🪙 <b id="stat-coins">0</b></span></div>
-    <div class="stat"><span class="stat-label">GEMS</span><span class="stat-value">💎 <b id="stat-gems">0</b></span></div>
-    <div class="stat"><span class="stat-label">BLOCKS MINED</span><span class="stat-value">🧱 <b id="stat-blocks">0</b></span></div>
-    <div class="stat"><span class="stat-label">PICKAXE</span><span class="stat-value">LV <b id="stat-pick">1</b></span></div>
-    <div class="stat"><span class="stat-label">HEALTH</span><span class="stat-value health"><span id="health-bar"><span id="health-fill"></span></span> <b id="stat-hp">100</b></span></div>
-    <div class="stat"><span class="stat-label">ONLINE</span><span class="stat-value">🟢 <b id="mp-count">1</b></span></div>
-    <div class="top-actions">
-      <button id="btn-save" class="btn small" title="Save now">💾 Save</button>
-      <button id="btn-spawn" class="btn small" title="Teleport to spawn (auto-sells backpack)">🏠 Spawn</button>
-      <button id="btn-settings" class="btn small" title="Account settings">⚙️</button>
-      <button id="btn-mp" class="btn small" title="Join multiplayer world">🌐 Multiplayer</button>
-      <button id="btn-solo" class="btn small" title="Back to single player">👤 Single player</button>
-      <button id="btn-lounge" class="btn small hidden" title="Admin lounge (admins only)">🛋️ Lounge</button>
-      <button id="btn-voice" class="btn small hidden" title="Toggle voice chat">🎤 Voice</button>
-    </div>
-  </header>
-
-  <div id="main-row">
-    <!-- Game column -->
-    <div id="game-col">
-      <div id="stage-header" class="panel dark">
-        <span id="stage-title">Stage 1 / 25 · Meadow Mine</span>
-        <span id="stage-sub" class="muted">Surface flag · Stage 1 begins below</span>
-        <span id="player-tag" class="hidden" style="display:inline-flex;gap:4px;"></span>
+  <div class="section-title">🎲 More games</div>
+  <div class="grid">
+    <a class="card" href="/games/snake">
+      <div class="art" style="background:linear-gradient(135deg,#14301a,#1f5230);">🐍</div>
+      <div class="body">
+        <span class="tag green">CLASSIC</span>
+        <h2>Snake</h2>
+        <p>Eat the apples, grow longer, don't bite yourself. The classic, on any device.</p>
+        <div class="play">▶ Play</div>
       </div>
-      <div id="canvas-wrap">
-        <canvas id="game"></canvas>
-        <div id="toast" class="hidden"></div>
+    </a>
+    <a class="card" href="/games/breakout">
+      <div class="art" style="background:linear-gradient(135deg,#2b1740,#4a2470);">🧱</div>
+      <div class="body">
+        <span class="tag pink">ARCADE</span>
+        <h2>Breakout</h2>
+        <p>Bounce the ball, smash every brick, don't let it drop. Clear all 5 rows to win.</p>
+        <div class="play">▶ Play</div>
       </div>
-      <div id="hud-line" class="panel dark"><span id="hud-text">Stage 1 · Depth 0 · Bag 0/20</span></div>
-      <!-- Touch / mouse controls -->
-      <div id="controls">
-        <button id="ctl-left" class="ctl">◀</button>
-        <button id="ctl-right" class="ctl">▶</button>
-        <button id="ctl-jump" class="ctl">JUMP</button>
-        <button id="ctl-mine" class="ctl accent">MINE</button>
-        <button id="ctl-ach" class="ctl" title="Achievements">🏆</button>
-        <button id="ctl-bag" class="ctl" title="Backpack">🎒</button>
-        <button id="ctl-up" class="ctl" title="Upgrades">⚒️</button>
-        <button id="ctl-lb" class="ctl" title="Leaderboard">📊</button>
-        <button id="ctl-admin" class="ctl hidden" title="Admin">🔧</button>
+    </a>
+    <a class="card" href="/games/flappy">
+      <div class="art" style="background:linear-gradient(135deg,#0f2f4a,#155e80);">🐱🪽</div>
+      <div class="body">
+        <span class="tag blue">ONE-TAP</span>
+        <h2>Flappy Cat</h2>
+        <p>Tap to flap. Thread the cat through the pipes and chase a high score.</p>
+        <div class="play">▶ Play</div>
       </div>
-      <p class="hint">A/D or arrows move · W/Up/Space jumps · Click a nearby block or hold MINE to dig.</p>
-      <!-- Inventory hotbar -->
-      <div id="inventory">
-        <div id="inv-slots"></div>
-      </div>
-<div id="ver" style="position:fixed;bottom:4px;right:8px;font-size:15px;font-weight:bold;color:#f5c542;z-index:9999;pointer-events:none;text-shadow:0 1px 3px #000;">v44</div>
-    </div>
-
-    <!-- Side panels -->
-    <aside id="side-col">
-      <section id="bag-panel" class="panel hidden">
-        <div class="panel-head"><h3>🎒 Backpack</h3><span id="bag-count" class="muted">0 items</span></div>
-        <div id="bag-grid" class="ore-grid"></div>
-        <button id="btn-sell" class="btn primary wide">Sell backpack (<span id="sell-value">0</span> 🪙)</button>
-      </section>
-
-      <section id="up-panel" class="panel hidden">
-        <div class="panel-head"><h3>⬆️ Upgrades</h3></div>
-        <div id="upgrade-list"></div>
-        <div class="panel-head"><h3>✨ Player Enchants</h3><span class="muted">💎 gems</span></div>
-        <div id="enchant-list"></div>
-      </section>
-
-      <section id="ach-panel" class="panel hidden">
-        <div class="panel-head"><h3>🏆 Achievements</h3><span id="ach-count" class="muted">0 / 3</span></div>
-        <div id="ach-list"></div>
-      </section>
-
-      <section id="lb-panel" class="panel hidden">
-        <div class="panel-head"><h3>📊 Leaderboard</h3><span class="muted">by coins</span></div>
-        <div id="leaderboard"><p class="muted">Loading…</p></div>
-      </section>
-
-      <section id="admin-panel" class="panel hidden">
-        <div class="panel-head"><h3>🛠️ Admin</h3><span class="tag dev">DEVELOPER</span></div>
-        <div class="admin-row">
-          <button class="btn small" data-admin="coins">+1M 🪙</button>
-          <button class="btn small" data-admin="gems">+100 💎</button>
-        </div>
-        <div class="admin-row">
-          <button class="btn small" data-admin="heal">Heal</button>
-          <button class="btn small" data-admin="god">😇 God mode</button>
-        </div>
-        <div class="admin-row">
-          <button class="btn small" data-admin="upgrades">Max upgrades</button>
-          <button class="btn small" data-admin="achievements">All achievements</button>
-        </div>
-        <div class="admin-row">
-          <button class="btn small" data-admin="stage100">Go to stage 100</button>
-          <button class="btn small" data-admin="wipe" style="border-color:#d9534f;color:#a33;">Delete all accounts</button>
-        </div>
-        <div class="admin-row">
-          <input id="ban-input" class="text-input" placeholder="Username" style="flex:1;min-width:0;">
-          <button class="btn small" id="ban-btn" style="border-color:#d9534f;color:#a33;">Ban</button>
-          <button class="btn small" id="unban-btn">Unban</button>
-        </div>
-        <div class="admin-row">
-          <input id="broadcast-input" class="text-input" placeholder="Global message…" style="flex:1;min-width:0;" maxlength="500">
-          <button class="btn small" id="broadcast-btn">📢 Send</button>
-        </div>
-        <div class="admin-row">
-          <input id="gift-input" class="text-input" placeholder="Friend's username" style="flex:1;min-width:0;">
-        </div>
-        <div class="admin-row">
-          <input id="gift-coins" class="text-input" placeholder="🪙 Coins" type="number" min="0" style="flex:1;min-width:0;">
-          <input id="gift-gems" class="text-input" placeholder="💎 Gems" type="number" min="0" style="flex:1;min-width:0;">
-          <button class="btn small" id="gift-btn">🎁 Gift</button>
-        </div>
-        <div class="admin-row">
-          <input id="reset-input" class="text-input" placeholder="Username to reset" style="flex:1;min-width:0;">
-          <button class="btn small" id="reset-btn" style="border-color:#d9534f;color:#a33;">Reset progress</button>
-        </div>
-        <div class="admin-row">
-          <button class="btn small" id="reset-self-btn" style="border-color:#d9534f;color:#a33;">Reset MY progress</button>
-        </div>
-        <div class="admin-row tag-admin-row">
-          <input id="tag-input" class="text-input" placeholder="Username for tag" style="flex:1;min-width:0;">
-          <select id="tag-select" class="text-input" style="flex:0 0 auto;">
-            <option value="admin">🛠️ Admin</option>
-            <option value="moderator">🛡️ Moderator</option>
-            <option value="developer">💻 Developer</option>
-          </select>
-        </div>
-        <div class="admin-row tag-admin-row">
-          <button class="btn small" id="tag-grant-btn">Give tag</button>
-          <button class="btn small" id="tag-revoke-btn">Remove tag</button>
-        </div>
-      </section>
-    </aside>
+    </a>
   </div>
-</div>
-
-<!-- ============ SETTINGS MODAL ============ -->
-<div id="settings-overlay" class="overlay hidden">
-  <div class="panel modal">
-    <h2>Account settings</h2>
-    <div id="settings-error" class="error hidden"></div>
-    <form id="settings-form">
-      <label for="set-displayname">Display name</label>
-      <input id="set-displayname" type="text" maxlength="24">
-      <label for="set-username">Username</label>
-      <input id="set-username" type="text" maxlength="32">
-      <label for="set-newpassword">New password <span class="muted">(leave blank to keep)</span></label>
-      <input id="set-newpassword" type="password" placeholder="••••••••" autocomplete="new-password">
-      <label for="set-currentpassword">Current password <span class="muted">(required)</span></label>
-      <input id="set-currentpassword" type="password" placeholder="••••••••" autocomplete="current-password">
-      <label>Theme</label>
-      <div class="row" style="margin-bottom:12px;">
-        <button type="button" id="theme-light" class="btn small" style="flex:1;">☀️ Light</button>
-        <button type="button" id="theme-dark" class="btn small" style="flex:1;">🌙 Dark</button>
-      </div>
-      <label>Graphics quality</label>
-      <div class="row" style="margin-bottom:12px;">
-        <button type="button" id="gfx-low" class="btn small" style="flex:1;">🥔 Low</button>
-        <button type="button" id="gfx-med" class="btn small" style="flex:1;">⚙️ Medium</button>
-        <button type="button" id="gfx-high" class="btn small" style="flex:1;">✨ High</button>
-      </div>
-      <label>Tags</label>
-      <div class="row" style="margin-bottom:12px;">
-        <button type="button" id="btn-tags" class="btn small" style="flex:1;">🏷️ Show tags: ON</button>
-      </div>
-      <div class="row">
-        <button type="submit" class="btn primary">Save changes</button>
-      </div>
-      <div class="row" style="margin-top:12px;">
-        <button type="button" id="btn-signout" class="btn wide" style="background:#c62828;border-color:#a02020;color:#fff;">↩ Log out</button>
-      </div>
-    </form>
-  </div>
-</div>
-
-<script src="game.js?v=44"></script>
+</main>
+<footer>More games coming soon 🛠️</footer>
 </body>
 </html>

@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Flappy Cat — Dylan's Games</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #12121c; color: #eee; display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 16px; }
+  a.back { align-self: flex-start; color: #f5c542; text-decoration: none; font-weight: bold; font-size: 15px; }
+  h1 { font-size: 26px; margin: 8px 0 4px; }
+  #score { font-size: 18px; margin-bottom: 10px; }
+  canvas { background: linear-gradient(#79c7e8, #cfeefb); border: 2px solid #155e80; border-radius: 10px; touch-action: none; max-width: 94vw; }
+  #msg { margin-top: 12px; font-size: 16px; min-height: 22px; text-align: center; }
+</style>
+</head>
+<body>
+<a class="back" href="/">← All games</a>
+<h1>🐱 Flappy Cat</h1>
+<div id="score">Score: 0 · Best: 0</div>
+<canvas id="c" width="400" height="480"></canvas>
+<div id="msg">Tap, click, or press Space to flap</div>
+<script>
+const cvs = document.getElementById('c'), ctx = cvs.getContext('2d');
+const W = cvs.width, H = cvs.height, GROUND = 40;
+let cat, pipes, score, best = +(localStorage.getItem('flappy-best') || 0), state, frame;
+function reset() {
+  cat = { x: 80, y: H / 2, vy: 0, r: 16 };
+  pipes = []; score = 0; state = 'wait'; frame = 0; upd();
+  document.getElementById('msg').textContent = 'Tap, click, or press Space to flap';
+}
+function upd() { document.getElementById('score').textContent = `Score: ${score} · Best: ${best}`; }
+function flap() {
+  if (state === 'dead') { reset(); return; }
+  state = 'play'; cat.vy = -8.2;
+}
+function step() {
+  draw();
+  if (state === 'play') {
+    frame++;
+    cat.vy += 0.45; cat.y += cat.vy;
+    if (frame % 95 === 0) {
+      const gap = 128, top = 50 + Math.random() * (H - GROUND - gap - 110);
+      pipes.push({ x: W + 10, top, gap, passed: false });
+    }
+    for (const p of pipes) {
+      p.x -= 2.6;
+      if (!p.passed && p.x + 62 < cat.x) { p.passed = true; score++; upd(); }
+      const inX = cat.x + cat.r - 3 > p.x && cat.x - cat.r + 3 < p.x + 62;
+      const inGap = cat.y - cat.r + 3 > p.top && cat.y + cat.r - 3 < p.top + p.gap;
+      if (inX && !inGap) die();
+    }
+    pipes = pipes.filter(p => p.x > -70);
+    if (cat.y + cat.r >= H - GROUND || cat.y - cat.r <= 0) die();
+  }
+  requestAnimationFrame(step);
+}
+function die() {
+  if (state === 'dead') return;
+  state = 'dead';
+  best = Math.max(best, score); localStorage.setItem('flappy-best', best); upd();
+  document.getElementById('msg').textContent = `💀 Bonk! Score ${score}. Tap to try again.`;
+}
+function draw() {
+  ctx.fillStyle = '#79c7e8'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#a8dcf2';
+  ctx.beginPath(); ctx.arc(70, 70, 22, 0, 7); ctx.arc(96, 70, 17, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc(310, 50, 18, 0, 7); ctx.arc(332, 50, 14, 0, 7); ctx.fill();
+  for (const p of pipes) {
+    ctx.fillStyle = '#43a047';
+    ctx.fillRect(p.x, 0, 62, p.top);
+    ctx.fillRect(p.x, p.top + p.gap, 62, H - GROUND - (p.top + p.gap));
+    ctx.fillStyle = '#2e7d32';
+    ctx.fillRect(p.x - 3, p.top - 16, 68, 16);
+    ctx.fillRect(p.x - 3, p.top + p.gap, 68, 16);
+  }
+  ctx.fillStyle = '#8d6e63'; ctx.fillRect(0, H - GROUND, W, GROUND);
+  ctx.fillStyle = '#66bb6a'; ctx.fillRect(0, H - GROUND, W, 8);
+  ctx.font = '32px serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.save();
+  ctx.translate(cat.x, cat.y);
+  ctx.rotate(Math.max(-0.4, Math.min(0.9, cat.vy * 0.07)));
+  ctx.fillText('🐱', 0, 0);
+  ctx.restore();
+  if (state === 'play' || state === 'dead') {
+    ctx.font = 'bold 38px sans-serif'; ctx.fillStyle = '#fff';
+    ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = 5;
+    ctx.strokeText(score, W / 2, 56); ctx.fillText(score, W / 2, 56);
+  }
+}
+cvs.addEventListener('pointerdown', e => { e.preventDefault(); flap(); });
+addEventListener('keydown', e => { if (e.key === ' ') { e.preventDefault(); flap(); } });
+reset(); requestAnimationFrame(step);
+</script>
+</body>
+</html>
