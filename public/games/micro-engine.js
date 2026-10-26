@@ -10,6 +10,25 @@ let pointer = { x: W / 2, y: H / 2 };
 let held = {};
 let last = performance.now();
 
+
+const TARGET_MODES = {
+  'bug-blaster': 'split', 'star-sniper': 'tiny', 'ufo-zap': 'teleport', 'gem-grab': 'decoys',
+  'bubble-pop': 'rise', 'ghost-tap': 'fade', 'apple-aim': 'fall', 'rocket-tap': 'speedup',
+  'coin-chase': 'flee', 'frog-flick': 'hop'
+};
+const TARGET_HOW = {
+  'bug-blaster': 'Tap a bug and it splits into two smaller bugs. Pop them all!',
+  'star-sniper': 'A tiny star worth 2 points a hit. Precision pays!',
+  'ufo-zap': 'The UFO teleports every second. Zap it before it jumps!',
+  'gem-grab': "Grab the gems, but don't tap the bombs — they cost 3 points!",
+  'bubble-pop': 'Bubbles float up and away. Pop them before they escape!',
+  'ghost-tap': "The ghost fades in and out. Tap it while it's solid!",
+  'apple-aim': 'Apples rain from the sky. Tap them before they land!',
+  'rocket-tap': 'Every hit makes the rocket faster. How long can you keep up?',
+  'coin-chase': 'The coin runs from your finger. Corner it and tap it!',
+  'frog-flick': 'The frog sits still, then hops! Tap it between jumps or mid-hop.'
+};
+function howText() { return (cfg && cfg.mechanic === 'target' && TARGET_HOW[cfg.slug]) || (cfg ? cfg.how : ''); }
 const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
@@ -33,7 +52,7 @@ function start() {
   if (!cfg) return;
   score = 0; submitted = false; state = 'play';
   Engines[cfg.mechanic].setup();
-  msg(cfg.how); scoreText();
+  msg(howText()); scoreText();
 }
 function finish(final, text) {
   if (state === 'over') return;
@@ -43,33 +62,118 @@ function finish(final, text) {
 
 const Engines = {
   target: {
-    setup() { G = { t: cfg.duration, target: null, spawnIn: 0 }; },
-    spawn() {
-      const r = cfg.size * rand(0.9, 1.1);
-      G.target = { x: rand(r + 12, W - r - 12), y: rand(r + 42, H - r - 12), r, vx: rand(-55, 55) * cfg.speed, vy: rand(-40, 40) * cfg.speed, life: 1.7 / cfg.speed };
+    setup() {
+      G = { t: cfg.duration, targets: [], spawnIn: 0, mode: TARGET_MODES[cfg.slug] || 'classic', hits: 0, boost: 1 };
+    },
+    spawnOne(kind, x, y, r) {
+      const mode = G.mode;
+      let rad = r || cfg.size;
+      if (mode === 'tiny') rad = cfg.size * 0.55;
+      if (mode === 'rise') rad = rand(20, 32);
+      const tg = { x: 0, y: 0, r: rad, vx: 0, vy: 0, life: 2.4, kind: kind || 'main', ph: rand(0, 6), age: 0, timer: rand(0.7, 1.1) };
+      if (x !== undefined) { tg.x = x; tg.y = y; }
+      else if (mode === 'fall') { tg.x = rand(rad + 10, W - rad - 10); tg.y = -rad; tg.vy = rand(30, 60); }
+      else if (mode === 'rise') { tg.x = rand(rad + 10, W - rad - 10); tg.y = H + rad; tg.vy = -rand(45, 75) * cfg.speed; }
+      else {
+        tg.x = rand(rad + 12, W - rad - 12); tg.y = rand(rad + 42, H - rad - 12);
+        const sp = cfg.speed * (G.boost || 1);
+        tg.vx = rand(-55, 55) * sp; tg.vy = rand(-40, 40) * sp;
+      }
+      if (kind === 'decoy') tg.r = cfg.size * 0.85;
+      G.targets.push(tg);
+      return tg;
     },
     update(dt) {
+      const mode = G.mode;
       G.t -= dt; scoreText(`Time ${Math.max(0, Math.ceil(G.t))}`);
-      if (G.t <= 0) return finish(score, `⏰ Time! You hit ${score} targets.`);
-      if (!G.target) { G.spawnIn -= dt; if (G.spawnIn <= 0) this.spawn(); return; }
-      const tg = G.target;
-      tg.x += tg.vx * dt; tg.y += tg.vy * dt; tg.life -= dt;
-      if (tg.x < tg.r || tg.x > W - tg.r) tg.vx *= -1;
-      if (tg.y < tg.r + 28 || tg.y > H - tg.r) tg.vy *= -1;
-      if (tg.life <= 0) { G.target = null; G.spawnIn = 0.15; }
+      if (G.t <= 0) return finish(score, `⏰ Time! Final score: ${score}.`);
+      const persist = mode === 'teleport' || mode === 'flee' || mode === 'hop';
+      const mains = G.targets.filter(x => x.kind === 'main').length;
+      const want = (mode === 'rise' || mode === 'fall') ? 3 : 1;
+      G.spawnIn -= dt;
+      if (mains < want && G.spawnIn <= 0) {
+        this.spawnOne('main');
+        if (mode === 'decoys' && Math.random() < 0.85) this.spawnOne('decoy');
+        G.spawnIn = (mode === 'rise' || mode === 'fall') ? 0.45 : 0.1;
+      }
+      for (const tg of G.targets) {
+        tg.age += dt;
+        if (mode === 'fall') {
+          tg.vy += 330 * dt; tg.y += tg.vy * dt;
+          if (tg.y > H + tg.r) tg.life = 0;
+        } else if (mode === 'rise') {
+          tg.y += tg.vy * dt; tg.x += Math.sin(tg.age * 3 + tg.ph) * 22 * dt;
+          if (tg.y < -tg.r - 4) tg.life = 0;
+        } else if (mode === 'teleport') {
+          tg.timer -= dt;
+          if (tg.timer <= 0) { tg.x = rand(tg.r + 12, W - tg.r - 12); tg.y = rand(tg.r + 42, H - tg.r - 12); tg.timer = 0.95; }
+        } else if (mode === 'hop') {
+          tg.x += tg.vx * dt; tg.y += tg.vy * dt;
+          if (tg.vy !== 0 || tg.y < H - tg.r - 6) tg.vy += 950 * dt;
+          if (tg.y >= H - tg.r - 6 && tg.vy >= 0) {
+            tg.y = H - tg.r - 6; tg.vy = 0; tg.vx = 0;
+            tg.timer -= dt;
+            if (tg.timer <= 0) { tg.vx = rand(-150, 150); tg.vy = -rand(270, 390); tg.timer = rand(0.6, 1.2); }
+          }
+        } else if (mode === 'flee') {
+          const dx = tg.x - pointer.x, dy = tg.y - pointer.y, d = Math.hypot(dx, dy) || 1;
+          if (d < 135) { tg.vx = dx / d * 155 * cfg.speed; tg.vy = dy / d * 155 * cfg.speed; }
+          tg.x += tg.vx * dt; tg.y += tg.vy * dt; tg.vx *= 0.9; tg.vy *= 0.9;
+          tg.x = clamp(tg.x, tg.r, W - tg.r); tg.y = clamp(tg.y, tg.r + 30, H - tg.r);
+        } else {
+          tg.life -= dt;
+          tg.x += tg.vx * dt; tg.y += tg.vy * dt;
+          if (tg.x < tg.r || tg.x > W - tg.r) tg.vx *= -1;
+          if (tg.y < tg.r + 28 || tg.y > H - tg.r) tg.vy *= -1;
+        }
+      }
+      G.targets = G.targets.filter(tg => tg.life > 0);
     },
     tap(x, y) {
-      const tg = G.target; if (!tg) return;
-      if (Math.hypot(x - tg.x, y - tg.y) <= tg.r + 4) { score++; G.target = null; G.spawnIn = 0.06; scoreText(`Time ${Math.max(0, Math.ceil(G.t))}`); }
+      const mode = G.mode;
+      for (let i = G.targets.length - 1; i >= 0; i--) {
+        const tg = G.targets[i];
+        if (Math.hypot(x - tg.x, y - tg.y) > tg.r + 4) continue;
+        if (mode === 'fade') {
+          const op = 0.25 + 0.75 * (0.5 + 0.5 * Math.sin(tg.age * 2.4 + tg.ph));
+          if (op < 0.45) return; // too faded to catch
+        }
+        if (tg.kind === 'decoy') {
+          score = Math.max(0, score - 3);
+          G.targets.splice(i, 1);
+          scoreText(`Time ${Math.max(0, Math.ceil(G.t))}`);
+          return;
+        }
+        score += mode === 'tiny' ? 2 : 1;
+        G.hits++;
+        if (mode === 'speedup') G.boost = 1 + G.hits * 0.07;
+        if (mode === 'split' && tg.kind === 'main') {
+          const sr = tg.r * 0.62;
+          const a = this.spawnOne('small', tg.x - sr, tg.y, sr);
+          const b = this.spawnOne('small', tg.x + sr, tg.y, sr);
+          a.vx = rand(-90, -30); a.vy = rand(-60, 60); a.life = 1.7;
+          b.vx = rand(30, 90); b.vy = rand(-60, 60); b.life = 1.7;
+        }
+        G.targets.splice(i, 1);
+        G.spawnIn = Math.min(G.spawnIn, 0.06);
+        scoreText(`Time ${Math.max(0, Math.ceil(G.t))}`);
+        return;
+      }
     },
     draw() {
       bg();
       ctx.fillStyle = 'rgba(255,255,255,.16)'; ctx.fillRect(0, 0, W * clamp(G.t / cfg.duration, 0, 1), 8);
-      if (G.target) {
-        const tg = G.target;
-        ctx.fillStyle = cfg.color; ctx.beginPath(); ctx.arc(tg.x, tg.y, tg.r, 0, 7); ctx.fill();
-        ctx.font = `${Math.round(tg.r * 1.05)}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(cfg.icon, tg.x, tg.y + 1);
-      } else centerText('…', H / 2, '42px serif', 'rgba(255,255,255,.5)');
+      if (!G.targets.length) centerText('…', H / 2, '42px serif', 'rgba(255,255,255,.5)');
+      for (const tg of G.targets) {
+        let alpha = 1;
+        if (G.mode === 'fade') alpha = 0.25 + 0.75 * (0.5 + 0.5 * Math.sin(tg.age * 2.4 + tg.ph));
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = tg.kind === 'decoy' ? '#7f1d1d' : cfg.color;
+        ctx.beginPath(); ctx.arc(tg.x, tg.y, tg.r, 0, 7); ctx.fill();
+        ctx.font = `${Math.round(tg.r * 1.05)}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(tg.kind === 'decoy' ? '💣' : cfg.icon, tg.x, tg.y + 1);
+        ctx.globalAlpha = 1;
+      }
       overlay();
     }
   },
@@ -376,7 +480,7 @@ async function submitScore(s) {
   if (!cfg) { msg('This game could not be found.'); return; }
   document.title = `${cfg.name} — Arqade`;
   $('game-title').textContent = `${cfg.icon} ${cfg.name}`;
-  msg(cfg.how); scoreText();
+  msg(howText()); scoreText();
   Engines[cfg.mechanic].setup();
   try { const r = await fetch('/api/me'); if (r.ok) ME = (await r.json()).user; } catch (e) {}
   $('acct').innerHTML = ME ? `👤 Playing as <b>${esc(ME.displayName)}</b> — your best score saves to your account` : '👤 <a href="/miner-cat-2" style="color:#f5c542;">Sign in</a> to save scores to your account';
