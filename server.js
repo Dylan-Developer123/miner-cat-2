@@ -233,6 +233,9 @@ async function main() {
   try { await db.exec('ALTER TABLE users ADD COLUMN is_moderator INTEGER NOT NULL DEFAULT 0'); } catch (e) { /* already exists */ }
   try { await db.exec('ALTER TABLE users ADD COLUMN is_developer INTEGER NOT NULL DEFAULT 0'); } catch (e) { /* already exists */ }
   try { await db.exec('ALTER TABLE users ADD COLUMN hide_tags INTEGER NOT NULL DEFAULT 0'); } catch (e) { /* already exists */ }
+  // The owner is the first registered account and holds all four tags for real.
+  // Backfill once so badge display can use the real flags (no admin implies owner).
+  try { await db.exec('UPDATE users SET is_owner = 1, is_admin = 1, is_moderator = 1, is_developer = 1 WHERE id = (SELECT MIN(id) FROM users)'); } catch (e) { /* no users yet */ }
   try { await db.exec(`CREATE TABLE IF NOT EXISTS broadcasts (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     message TEXT NOT NULL DEFAULT '',
@@ -246,7 +249,7 @@ async function main() {
   const stmtGetUserAuthByUsername = db.prepare('SELECT * FROM users WHERE username = ?');
   const stmtCountUsers = db.prepare('SELECT COUNT(*) AS n FROM users');
   const stmtInsertUser = db.prepare(
-    'INSERT INTO users (username, password_hash, display_name, is_admin) VALUES (?, ?, ?, ?)'
+    'INSERT INTO users (username, password_hash, display_name, is_admin, is_owner, is_moderator, is_developer) VALUES (?, ?, ?, ?, ?, ?, ?)'
   );
   const stmtUpdateUserCoins = db.prepare('UPDATE users SET coins = ? WHERE id = ?');
   const stmtUpdateAccount = db.prepare('UPDATE users SET username = ?, display_name = ? WHERE id = ?');
@@ -261,7 +264,7 @@ async function main() {
   const stmtDeleteSession = db.prepare('DELETE FROM sessions WHERE token = ?');
   const stmtDeleteUserSessions = db.prepare('DELETE FROM sessions WHERE user_id = ?');
   const stmtLeaderboard = db.prepare(
-    'SELECT display_name, coins, is_admin, is_owner, is_moderator, is_developer FROM users ORDER BY coins DESC, created_at ASC LIMIT 50'
+    'SELECT display_name, coins, is_admin, is_owner, is_moderator, is_developer, hide_tags FROM users ORDER BY coins DESC, created_at ASC LIMIT 50'
   );
 
   // -------------------------------------------------------------------------
@@ -353,9 +356,9 @@ async function main() {
       username: u.username,
       displayName: u.display_name,
       isAdmin: !!u.is_admin,
-      isOwner: !!u.is_owner || !!u.is_admin,
-      isModerator: !!u.is_moderator || !!u.is_admin,
-      isDeveloper: !!u.is_developer || !!u.is_admin,
+      isOwner: !!u.is_owner,
+      isModerator: !!u.is_moderator,
+      isDeveloper: !!u.is_developer,
       hideTags: !!u.hide_tags,
       coins: u.coins,
     };
@@ -397,7 +400,8 @@ async function main() {
     const countRow = await stmtCountUsers.get();
     const isFirst = Number(countRow.n) === 0;
     const hash = bcrypt.hashSync(password, 10);
-    await stmtInsertUser.run(username, hash, displayName.trim(), isFirst ? 1 : 0);
+    const f = isFirst ? 1 : 0; // the first account is the owner and holds all four tags
+    await stmtInsertUser.run(username, hash, displayName.trim(), f, f, f, f);
     const authRow = await stmtGetUserAuthByUsername.get(username);
     const user = await stmtGetUserById.get(authRow.id);
     await createSession(res, user.id);
@@ -470,10 +474,10 @@ async function main() {
         displayName: r.display_name,
         coins: r.coins,
         tags: r.hide_tags ? {} : {
-          owner: !!r.is_owner || !!r.is_admin,
+          owner: !!r.is_owner,
           admin: !!r.is_admin,
-          moderator: !!r.is_moderator || !!r.is_admin,
-          developer: !!r.is_developer || !!r.is_admin,
+          moderator: !!r.is_moderator,
+          developer: !!r.is_developer,
         },
       })),
     });
@@ -518,10 +522,10 @@ async function main() {
         displayName: r.display_name,
         score: r.score,
         tags: r.hide_tags ? {} : {
-          owner: !!r.is_owner || !!r.is_admin,
+          owner: !!r.is_owner,
           admin: !!r.is_admin,
-          moderator: !!r.is_moderator || !!r.is_admin,
-          developer: !!r.is_developer || !!r.is_admin,
+          moderator: !!r.is_moderator,
+          developer: !!r.is_developer,
         },
       })),
     });
@@ -697,10 +701,10 @@ async function main() {
           onlineUser.ws.send(JSON.stringify({ t: 'tags-updated', user: profile }));
           // Update their tags in the online map too
           onlineUser.tags = updated.hide_tags ? {} : {
-            owner: !!updated.is_owner || !!updated.is_admin,
+            owner: !!updated.is_owner,
             admin: !!updated.is_admin,
-            moderator: !!updated.is_moderator || !!updated.is_admin,
-            developer: !!updated.is_developer || !!updated.is_admin,
+            moderator: !!updated.is_moderator,
+            developer: !!updated.is_developer,
           };
         }
         // Refresh everyone's leaderboard
@@ -769,10 +773,10 @@ async function main() {
       displayName: user.display_name,
       x: 10.5, y: -0.5, stage: 1,
       tags: user.hide_tags ? {} : {
-        owner: !!user.is_owner || !!user.is_admin,
+        owner: !!user.is_owner,
         admin: !!user.is_admin,
-        moderator: !!user.is_moderator || !!user.is_admin,
-        developer: !!user.is_developer || !!user.is_admin,
+        moderator: !!user.is_moderator,
+        developer: !!user.is_developer,
       },
     };
     // Replace old connection if re-connecting
