@@ -488,10 +488,11 @@ async function main() {
   // Portal game scores — the Miner Cat account is the one site account.
   // -------------------------------------------------------------------------
   const PORTAL_GAMES = ['snake', 'breakout', 'flappy', 'memory', '2048', 'clicker', 'pong', 'minesweeper'];
+  const isPortalGame = game => PORTAL_GAMES.includes(game) || /^micro-[a-z0-9-]{3,50}$/.test(game);
   app.post('/api/scores', requireAuth, async (req, res) => {
     const game = String((req.body || {}).game || '');
     const score = Math.floor(Number((req.body || {}).score));
-    if (!PORTAL_GAMES.includes(game)) return res.status(400).json({ error: 'Unknown game.' });
+    if (!isPortalGame(game)) return res.status(400).json({ error: 'Unknown game.' });
     if (!Number.isFinite(score) || score < 0 || score > 1000000) return res.status(400).json({ error: 'Bad score.' });
     const existing = await db.prepare('SELECT score FROM scores WHERE user_id = ? AND game = ?').get(req.user.id, game);
     if (!existing) {
@@ -505,7 +506,7 @@ async function main() {
 
   app.get('/api/scores/:game', async (req, res) => {
     const game = String(req.params.game || '');
-    if (!PORTAL_GAMES.includes(game)) return res.status(400).json({ error: 'Unknown game.' });
+    if (!isPortalGame(game)) return res.status(400).json({ error: 'Unknown game.' });
     const rows = await db.prepare(
       `SELECT u.display_name, u.is_owner, u.is_admin, u.is_moderator, u.is_developer, u.hide_tags, s.score
        FROM scores s JOIN users u ON u.id = s.user_id

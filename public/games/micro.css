@@ -1,0 +1,12 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: #12121c; color: #eee; display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 16px; }
+a.exit-game { display: inline-flex; align-items: center; align-self: flex-start; background: #26264a; color: #eee; border: 1px solid #55557a; border-radius: 9px; padding: 8px 14px; font-size: 15px; font-weight: 700; line-height: 1; text-decoration: none; }
+h1 { font-size: 26px; margin: 8px 0 4px; text-align: center; }
+#score { font-size: 18px; margin-bottom: 10px; text-align: center; min-height: 24px; }
+canvas { background: #18182a; border: 2px solid #55557a; border-radius: 10px; touch-action: none; max-width: 94vw; height: auto; }
+#msg { margin-top: 12px; font-size: 16px; min-height: 22px; text-align: center; max-width: 560px; }
+.actions { display: flex; gap: 9px; flex-wrap: wrap; justify-content: center; }
+button.action { margin-top: 10px; background: #f5c542; color: #191920; border: none; font-weight: bold; padding: 10px 22px; border-radius: 9px; font-size: 16px; cursor: pointer; }
+button.action.secondary { background: #33334f; color: #eee; border: 1px solid #55557a; }
+#acct { margin-top: 14px; font-size: 14px; opacity: .9; text-align: center; }
+#lb { margin-top: 10px; font-size: 14px; text-align: left; min-width: 250px; }
