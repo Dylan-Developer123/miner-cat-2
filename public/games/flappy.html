@@ -7,7 +7,7 @@
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Segoe UI', system-ui, sans-serif; background: #12121c; color: #eee; display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 16px; }
-  a.back { align-self: flex-start; color: #f5c542; text-decoration: none; font-weight: bold; font-size: 15px; }
+  a.exit-game { display: inline-flex; align-items: center; align-self: flex-start; background: #26264a; color: #eee; border: 1px solid #55557a; border-radius: 9px; padding: 8px 14px; font-size: 15px; font-weight: 700; line-height: 1; text-decoration: none; }
   h1 { font-size: 26px; margin: 8px 0 4px; }
   #score { font-size: 18px; margin-bottom: 10px; }
   canvas { background: linear-gradient(#79c7e8, #cfeefb); border: 2px solid #155e80; border-radius: 10px; touch-action: none; max-width: 94vw; }
@@ -15,7 +15,7 @@
 </style>
 </head>
 <body>
-<a class="back" href="/">← All games</a>
+<a class="exit-game" href="/">← All games</a>
 <h1>🐱 Flappy Cat</h1>
 <div id="score">Score: 0 · Best: 0</div>
 <canvas id="c" width="400" height="480"></canvas>
