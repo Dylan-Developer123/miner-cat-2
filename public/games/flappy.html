@@ -20,6 +20,8 @@
 <div id="score">Score: 0 · Best: 0</div>
 <canvas id="c" width="400" height="480"></canvas>
 <div id="msg">Tap, click, or press Space to flap</div>
+<div id="acct" style="margin-top:12px;font-size:14px;opacity:0.9;"></div>
+<div id="lb" style="margin-top:10px;font-size:14px;text-align:left;min-width:250px;color:#eee;"></div>
 <script>
 const cvs = document.getElementById('c'), ctx = cvs.getContext('2d');
 const W = cvs.width, H = cvs.height, GROUND = 40;
@@ -58,6 +60,7 @@ function step() {
 function die() {
   if (state === 'dead') return;
   state = 'dead';
+  submitScore(score);
   best = Math.max(best, score); localStorage.setItem('flappy-best', best); upd();
   document.getElementById('msg').textContent = `💀 Bonk! Score ${score}. Tap to try again.`;
 }
@@ -90,6 +93,30 @@ function draw() {
 }
 cvs.addEventListener('pointerdown', e => { e.preventDefault(); flap(); });
 addEventListener('keydown', e => { if (e.key === ' ') { e.preventDefault(); flap(); } });
+// --- Site account (the Miner Cat account works everywhere) ---
+let ME = null;
+const esc = s => String(s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+async function loadLb() {
+  try {
+    const d = await (await fetch('/api/scores/flappy')).json();
+    document.getElementById('lb').innerHTML = '<b>🏆 Leaderboard</b>' +
+      (d.scores.length ? d.scores.map((s, i) => `<br>${i + 1}. ${esc(s.displayName)} — ${s.score}`).join('') : '<br>No scores yet — be the first!');
+  } catch (e) {}
+}
+async function submitScore(s) {
+  if (!ME || !s) return;
+  try {
+    await fetch('/api/scores', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ game: 'flappy', score: s }) });
+    loadLb();
+  } catch (e) {}
+}
+(async () => {
+  try { const r = await fetch('/api/me'); if (r.ok) ME = (await r.json()).user; } catch (e) {}
+  document.getElementById('acct').innerHTML = ME
+    ? `👤 Playing as <b>${esc(ME.displayName)}</b> — your best score saves to your account`
+    : '👤 <a href="/miner-cat-2" style="color:#f5c542;">Sign in</a> to save scores to your account';
+  loadLb();
+})();
 reset(); requestAnimationFrame(step);
 </script>
 </body>

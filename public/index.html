@@ -65,6 +65,40 @@
   <h1>Dylan's <span>Games</span></h1>
   <p>Free games — no downloads, just play</p>
 </header>
+<div id="account-bar" style="background:#1a1a2a;border-bottom:2px solid #2c2c48;padding:10px 24px;font-size:15px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+  <span id="account-text">Checking your account…</span>
+</div>
+<script>
+  function tagText(u) {
+    let t = '';
+    if (u.isOwner) t += ' 👑 OWNER';
+    if (u.isAdmin) t += ' 🛠️ ADMIN';
+    if (u.isModerator) t += ' 🛡️ MODERATOR';
+    if (u.isDeveloper) t += ' 💻 DEVELOPER';
+    return u.hideTags ? '' : t;
+  }
+  (async () => {
+    const el = document.getElementById('account-text');
+    try {
+      const r = await fetch('/api/me');
+      if (r.ok) {
+        const { user } = await r.json();
+        el.innerHTML = `👤 Signed in as <b></b><span style="color:#f5c542;font-weight:bold;"></span> — one account for every game here.`;
+        el.querySelector('b').textContent = user.displayName;
+        el.querySelector('span').textContent = tagText(user);
+        const out = document.createElement('button');
+        out.textContent = 'Sign out';
+        out.style.cssText = 'margin-left:auto;background:#33334f;color:#eee;border:1px solid #55557a;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:14px;';
+        out.onclick = async () => { await fetch('/api/signout', { method: 'POST' }); location.reload(); };
+        document.getElementById('account-bar').appendChild(out);
+      } else {
+        el.innerHTML = '👤 One account works for every game. <a href="/miner-cat-2" style="color:#f5c542;font-weight:bold;">Sign in or create yours in Miner Cat 2</a>';
+      }
+    } catch (e) {
+      el.textContent = '';
+    }
+  })();
+</script>
 <main>
   <div class="section-title">🔥 Featured</div>
   <div class="grid" style="margin-bottom:34px;">

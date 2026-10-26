@@ -160,6 +160,12 @@ const SCHEMA_SQLITE = `
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   INSERT OR IGNORE INTO broadcasts (id, message) VALUES (1, '');
+  CREATE TABLE IF NOT EXISTS scores (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    game    TEXT NOT NULL,
+    score   INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, game)
+  );
 `;
 
 const SCHEMA_PG = `
@@ -194,6 +200,12 @@ const SCHEMA_PG = `
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
   INSERT INTO broadcasts (id, message) VALUES (1, '') ON CONFLICT (id) DO NOTHING;
+  CREATE TABLE IF NOT EXISTS scores (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    game    TEXT NOT NULL,
+    score   INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, game)
+  );
 `;
 
 async function main() {
@@ -470,6 +482,48 @@ async function main() {
   app.get('/api/broadcast', async (req, res) => {
     const row = await db.prepare('SELECT message FROM broadcasts WHERE id = 1').get();
     res.json({ message: row ? row.message : '' });
+  });
+
+  // -------------------------------------------------------------------------
+  // Portal game scores — the Miner Cat account is the one site account.
+  // -------------------------------------------------------------------------
+  const PORTAL_GAMES = ['snake', 'breakout', 'flappy'];
+  app.post('/api/scores', requireAuth, async (req, res) => {
+    const game = String((req.body || {}).game || '');
+    const score = Math.floor(Number((req.body || {}).score));
+    if (!PORTAL_GAMES.includes(game)) return res.status(400).json({ error: 'Unknown game.' });
+    if (!Number.isFinite(score) || score < 0 || score > 1000000) return res.status(400).json({ error: 'Bad score.' });
+    const existing = await db.prepare('SELECT score FROM scores WHERE user_id = ? AND game = ?').get(req.user.id, game);
+    if (!existing) {
+      await db.prepare('INSERT INTO scores (user_id, game, score) VALUES (?, ?, ?)').run(req.user.id, game, score);
+    } else if (score > existing.score) {
+      await db.prepare('UPDATE scores SET score = ? WHERE user_id = ? AND game = ?').run(score, req.user.id, game);
+    }
+    const mine = await db.prepare('SELECT score FROM scores WHERE user_id = ? AND game = ?').get(req.user.id, game);
+    res.json({ ok: true, best: mine ? mine.score : score });
+  });
+
+  app.get('/api/scores/:game', async (req, res) => {
+    const game = String(req.params.game || '');
+    if (!PORTAL_GAMES.includes(game)) return res.status(400).json({ error: 'Unknown game.' });
+    const rows = await db.prepare(
+      `SELECT u.display_name, u.is_owner, u.is_admin, u.is_moderator, u.is_developer, u.hide_tags, s.score
+       FROM scores s JOIN users u ON u.id = s.user_id
+       WHERE s.game = ? ORDER BY s.score DESC LIMIT 10`
+    ).all(game);
+    res.json({
+      game,
+      scores: rows.map((r) => ({
+        displayName: r.display_name,
+        score: r.score,
+        tags: r.hide_tags ? {} : {
+          owner: !!r.is_owner || !!r.is_admin,
+          admin: !!r.is_admin,
+          moderator: !!r.is_moderator || !!r.is_admin,
+          developer: !!r.is_developer || !!r.is_admin,
+        },
+      })),
+    });
   });
 
   // -------------------------------------------------------------------------

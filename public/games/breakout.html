@@ -22,6 +22,8 @@
 <canvas id="c" width="480" height="420"></canvas>
 <div id="msg">Move with mouse, finger, or ◀ ▶ — click or tap to launch</div>
 <button id="restart">↻ Restart</button>
+<div id="acct" style="margin-top:14px;font-size:14px;opacity:0.9;"></div>
+<div id="lb" style="margin-top:10px;font-size:14px;text-align:left;min-width:250px;"></div>
 <script>
 const cvs = document.getElementById('c'), ctx = cvs.getContext('2d');
 const W = cvs.width, H = cvs.height;
@@ -70,6 +72,7 @@ function step() {
         b.alive = false; score += 10; ball.vy *= -1; upd();
         if (bricks.every(x => !x.alive)) {
           running = false;
+          submitScore(score);
           document.getElementById('msg').textContent = `🎉 You cleared every brick! Score ${score}`;
         }
         break;
@@ -79,6 +82,7 @@ function step() {
       lives--; upd();
       if (lives <= 0) {
         running = false;
+        submitScore(score);
         document.getElementById('msg').textContent = `💀 Game over — score ${score}. Hit Restart!`;
       } else reset(false);
     }
@@ -110,6 +114,30 @@ addEventListener('keyup', e => {
   if (e.key === 'ArrowRight') right = false;
 });
 document.getElementById('restart').onclick = () => { reset(true); };
+// --- Site account (the Miner Cat account works everywhere) ---
+let ME = null;
+const esc = s => String(s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+async function loadLb() {
+  try {
+    const d = await (await fetch('/api/scores/breakout')).json();
+    document.getElementById('lb').innerHTML = '<b>🏆 Leaderboard</b>' +
+      (d.scores.length ? d.scores.map((s, i) => `<br>${i + 1}. ${esc(s.displayName)} — ${s.score}`).join('') : '<br>No scores yet — be the first!');
+  } catch (e) {}
+}
+async function submitScore(s) {
+  if (!ME || !s) return;
+  try {
+    await fetch('/api/scores', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ game: 'breakout', score: s }) });
+    loadLb();
+  } catch (e) {}
+}
+(async () => {
+  try { const r = await fetch('/api/me'); if (r.ok) ME = (await r.json()).user; } catch (e) {}
+  document.getElementById('acct').innerHTML = ME
+    ? `👤 Playing as <b>${esc(ME.displayName)}</b> — your best score saves to your account`
+    : '👤 <a href="/miner-cat-2" style="color:#f5c542;">Sign in</a> to save scores to your account';
+  loadLb();
+})();
 reset(true); requestAnimationFrame(step);
 </script>
 </body>

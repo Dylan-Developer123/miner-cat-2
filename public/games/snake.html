@@ -28,6 +28,8 @@
   <span></span><button data-d="up">▲</button><span></span>
   <button data-d="left">◀</button><button data-d="down">▼</button><button data-d="right">▶</button>
 </div>
+<div id="acct" style="margin-top:14px;font-size:14px;opacity:0.9;"></div>
+<div id="lb" style="margin-top:10px;font-size:14px;text-align:left;min-width:250px;"></div>
 <script>
 const cvs = document.getElementById('c'), ctx = cvs.getContext('2d');
 const N = 20, T = cvs.width / N;
@@ -51,6 +53,7 @@ function tick() {
   if (head.x < 0 || head.y < 0 || head.x >= N || head.y >= N || snake.some(s => s.x === head.x && s.y === head.y)) {
     alive = false;
     best = Math.max(best, score); localStorage.setItem('snake-best', best); upd();
+    submitScore(score);
     document.getElementById('msg').textContent = `💀 Game over — score ${score}. Hit Restart!`;
     return;
   }
@@ -87,6 +90,30 @@ cvs.addEventListener('touchend', e => {
   if (Math.abs(dx) > Math.abs(dy)) setDir(Math.sign(dx), 0); else setDir(0, Math.sign(dy));
 }, { passive: true });
 document.getElementById('restart').onclick = reset;
+// --- Site account (the Miner Cat account works everywhere) ---
+let ME = null;
+const esc = s => String(s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+async function loadLb() {
+  try {
+    const d = await (await fetch('/api/scores/snake')).json();
+    document.getElementById('lb').innerHTML = '<b>🏆 Leaderboard</b>' +
+      (d.scores.length ? d.scores.map((s, i) => `<br>${i + 1}. ${esc(s.displayName)} — ${s.score}`).join('') : '<br>No scores yet — be the first!');
+  } catch (e) {}
+}
+async function submitScore(s) {
+  if (!ME || !s) return;
+  try {
+    await fetch('/api/scores', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ game: 'snake', score: s }) });
+    loadLb();
+  } catch (e) {}
+}
+(async () => {
+  try { const r = await fetch('/api/me'); if (r.ok) ME = (await r.json()).user; } catch (e) {}
+  document.getElementById('acct').innerHTML = ME
+    ? `👤 Playing as <b>${esc(ME.displayName)}</b> — your best score saves to your account`
+    : '👤 <a href="/miner-cat-2" style="color:#f5c542;">Sign in</a> to save scores to your account';
+  loadLb();
+})();
 reset();
 </script>
 </body>
