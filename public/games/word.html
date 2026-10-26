@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Word Guess — Arqade</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #4a3728; color: #1f2937; display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 16px; }
+  a.exit-game { display: inline-flex; align-items: center; align-self: flex-start; background: #101828; color: #dcefe2; border: 1px solid #3b4b3f; border-radius: 9px; padding: 8px 14px; font-size: 15px; font-weight: 700; line-height: 1; text-decoration: none; }
+  #paper { background: repeating-linear-gradient(#fffdf4 0 30px, #dbeafe 30px 31px); border-radius: 6px; box-shadow: 0 12px 28px rgba(0,0,0,.45); width: min(600px, 95vw); margin-top: 12px; padding: 18px 22px 24px 44px; position: relative; }
+  #paper::before { content: ''; position: absolute; left: 32px; top: 0; bottom: 0; width: 2px; background: #fca5a5; }
+  h1 { font-family: 'Comic Sans MS', 'Segoe Print', cursive; font-size: 27px; color: #1e3a8a; transform: rotate(-1deg); }
+  #hud { font-family: 'Comic Sans MS', 'Segoe Print', cursive; font-size: 16px; color: #374151; margin: 4px 0 2px; }
+  #hud b { color: #b91c1c; }
+  #stage { font-size: 62px; text-align: center; margin: 2px 0; min-height: 76px; }
+  #hint { text-align: center; font-family: 'Comic Sans MS', 'Segoe Print', cursive; color: #6b7280; font-size: 15px; }
+  #word { display: flex; gap: 7px; justify-content: center; flex-wrap: wrap; margin: 14px 0 6px; }
+  .slot { width: 34px; height: 44px; border-bottom: 4px solid #1e3a8a; display: flex; align-items: center; justify-content: center; font-family: 'Comic Sans MS', 'Segoe Print', cursive; font-size: 28px; font-weight: bold; color: #111827; }
+  .slot.hidden-letter span { visibility: hidden; }
+  .slot.missed { color: #b91c1c; }
+  #msg { text-align: center; font-family: 'Comic Sans MS', 'Segoe Print', cursive; font-size: 18px; min-height: 26px; color: #1e3a8a; margin-bottom: 10px; }
+  #kb { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; max-width: 520px; margin: 0 auto; }
+  #kb button { width: 38px; height: 42px; border: 2px solid #1e3a8a; background: #fff; border-radius: 8px; font-family: 'Comic Sans MS', 'Segoe Print', cursive; font-size: 17px; font-weight: bold; color: #1e3a8a; cursor: pointer; }
+  #kb button.good { background: #bbf7d0; border-color: #15803d; color: #15803d; }
+  #kb button.wrong { background: #fecaca; border-color: #b91c1c; color: #b91c1c; opacity: .55; }
+  #kb button:disabled { cursor: default; }
+  #next { display: block; margin: 14px auto 0; background: #1e3a8a; color: #fff; border: none; font-weight: bold; padding: 11px 24px; border-radius: 9px; font-size: 16px; cursor: pointer; font-family: 'Segoe UI', sans-serif; }
+  #acct { margin-top: 14px; font-size: 14px; color: #f3e9d2; }
+  #lb { margin-top: 10px; font-size: 14px; text-align: left; min-width: 250px; color: #f3e9d2; }
+</style>
+</head>
+<body>
+<a class="exit-game" href="/">← All games</a>
+<div id="paper">
+  <h1>✏️ Word Guess</h1>
+  <div id="hud">⭐ Score <b id="h-score">0</b> · 🔥 Streak <b id="h-streak">0</b> · ❌ Wrong left <b id="h-left">6</b></div>
+  <div id="stage">🙂</div>
+  <div id="hint"></div>
+  <div id="word"></div>
+  <div id="msg">Tap a letter to guess the mystery word!</div>
+  <div id="kb"></div>
+  <button id="next" style="display:none;">▶ Next word</button>
+</div>
+<div id="acct"></div>
+<div id="lb"></div>
+<script>
+const WORDS = [
+  ['Animals', 'ELEPHANT'], ['Animals', 'PENGUIN'], ['Animals', 'GIRAFFE'], ['Animals', 'OCTOPUS'], ['Animals', 'CHEETAH'], ['Animals', 'DOLPHIN'], ['Animals', 'KOALA'], ['Animals', 'ZEBRA'],
+  ['Space', 'ASTRONAUT'], ['Space', 'GALAXY'], ['Space', 'ROCKET'], ['Space', 'PLANET'], ['Space', 'COMET'], ['Space', 'NEBULA'], ['Space', 'ORBIT'], ['Space', 'METEOR'],
+  ['Food', 'PANCAKE'], ['Food', 'BURRITO'], ['Food', 'AVOCADO'], ['Food', 'POPCORN'], ['Food', 'MUFFIN'], ['Food', 'SPAGHETTI'], ['Food', 'WAFFLE'], ['Food', 'PRETZEL'],
+  ['Sports', 'SOCCER'], ['Sports', 'BASEBALL'], ['Sports', 'SURFING'], ['Sports', 'BOXING'], ['Sports', 'TENNIS'], ['Sports', 'HOCKEY'], ['Sports', 'SKATEBOARD'], ['Sports', 'ARCHERY'],
+  ['Nature', 'VOLCANO'], ['Nature', 'RAINBOW'], ['Nature', 'GLACIER'], ['Nature', 'DESERT'], ['Nature', 'JUNGLE'], ['Nature', 'WATERFALL'], ['Nature', 'TORNADO'], ['Nature', 'BAMBOO'],
+  ['Tech', 'ROBOT'], ['Tech', 'KEYBOARD'], ['Tech', 'LAPTOP'], ['Tech', 'DRONE'], ['Tech', 'PIXEL'], ['Tech', 'TABLET'], ['Tech', 'CONSOLE'], ['Tech', 'HEADPHONES']
+];
+const FACES = ['💀', '😖', '😟', '😕', '😐', '🙂', '😀'];
+let word, cat, guessed, wrong, scoreGame, streak, state, deck, submitted;
+function newDeck() { deck = [...WORDS]; for (let i = deck.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [deck[i], deck[j]] = [deck[j], deck[i]]; } }
+function newRound() {
+  if (!deck.length) newDeck();
+  [cat, word] = deck.pop();
+  guessed = new Set(); wrong = 0; state = 'play';
+  document.getElementById('hint').textContent = 'Category: ' + cat;
+  document.getElementById('msg').textContent = streak > 0 ? `Streak of ${streak}! Keep it going…` : 'Tap a letter to guess the mystery word!';
+  document.getElementById('next').style.display = 'none';
+  buildKb(); render();
+}
+function resetGame() {
+  scoreGame = 0; streak = 0; submitted = false; newDeck(); newRound();
+}
+function render() {
+  document.getElementById('h-score').textContent = scoreGame;
+  document.getElementById('h-streak').textContent = streak;
+  document.getElementById('h-left').textContent = 6 - wrong;
+  document.getElementById('stage').textContent = FACES[Math.max(0, 6 - wrong)];
+  const w = document.getElementById('word'); w.innerHTML = '';
+  for (const ch of word) {
+    const d = document.createElement('div');
+    const show = guessed.has(ch) || state === 'lost';
+    d.className = 'slot' + (!show ? ' hidden-letter' : '') + (state === 'lost' && !guessed.has(ch) ? ' missed' : '');
+    d.innerHTML = `<span>${ch}</span>`;
+    w.appendChild(d);
+  }
+}
+function buildKb() {
+  const kb = document.getElementById('kb'); kb.innerHTML = '';
+  for (const ch of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') {
+    const b = document.createElement('button');
+    b.textContent = ch;
+    if (guessed.has(ch)) { b.disabled = true; b.className = word.includes(ch) ? 'good' : 'wrong'; }
+    b.onclick = () => guess(ch);
+    kb.appendChild(b);
+  }
+}
+function guess(ch) {
+  if (state !== 'play' || guessed.has(ch)) return;
+  guessed.add(ch);
+  if (word.includes(ch)) {
+    document.getElementById('msg').textContent = ['Nice!', 'Yes!', 'Got it!', 'Sharp eye!'][Math.floor(Math.random() * 4)];
+    if ([...word].every(c => guessed.has(c))) {
+      const pts = 100 + (6 - wrong) * 20 + word.length * 5;
+      scoreGame += pts; streak++;
+      state = 'won';
+      document.getElementById('msg').textContent = `🎉 You got ${word}! +${pts} points (streak ${streak})`;
+      document.getElementById('next').style.display = 'block';
+      document.getElementById('next').textContent = '▶ Next word';
+    }
+  } else {
+    wrong++;
+    if (wrong >= 6) {
+      state = 'lost';
+      document.getElementById('msg').textContent = `💀 The word was ${word}. Run over — final score ${scoreGame}.`;
+      document.getElementById('next').style.display = 'block';
+      document.getElementById('next').textContent = '▶ New run';
+      if (!submitted) { submitted = true; submitScore(scoreGame); }
+    } else {
+      document.getElementById('msg').textContent = `Nope, no ${ch}. ${6 - wrong} wrong guesses left.`;
+    }
+  }
+  buildKb(); render();
+}
+document.getElementById('next').onclick = () => { if (state === 'lost') resetGame(); else newRound(); };
+addEventListener('keydown', e => { const ch = e.key.toUpperCase(); if (/^[A-Z]$/.test(ch)) guess(ch); });
+// --- Site account (the Miner Cat account works everywhere) ---
+let ME = null;
+const esc = s => String(s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+async function loadLb() {
+  try {
+    const d = await (await fetch('/api/scores/word')).json();
+    document.getElementById('lb').innerHTML = '<b>🏆 Leaderboard</b>' + (d.scores.length ? d.scores.map((s, i) => `<br>${i + 1}. ${esc(s.displayName)} — ${s.score}`).join('') : '<br>No scores yet — be the first!');
+  } catch (e) {}
+}
+async function submitScore(s) {
+  if (!ME || !s) return;
+  try { await fetch('/api/scores', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ game: 'word', score: s }) }); loadLb(); } catch (e) {}
+}
+(async () => {
+  try { const r = await fetch('/api/me'); if (r.ok) ME = (await r.json()).user; } catch (e) {}
+  document.getElementById('acct').innerHTML = ME ? `👤 Playing as <b>${esc(ME.displayName)}</b> — your best run saves to your account` : '👤 <a href="/miner-cat-2" style="color:#f5c542;">Sign in</a> to save scores to your account';
+  loadLb();
+})();
+resetGame();
+</script>
+<script src="/games/admin-panel.js"></script>
+</body>
+</html>

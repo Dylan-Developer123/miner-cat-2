@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Lunar Lander — Arqade</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0a0a14; color: #e8e8f2; display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 16px; }
+  a.exit-game { display: inline-flex; align-items: center; align-self: flex-start; background: #26264a; color: #eee; border: 1px solid #55557a; border-radius: 9px; padding: 8px 14px; font-size: 15px; font-weight: 700; line-height: 1; text-decoration: none; }
+  h1 { font-size: 26px; margin: 8px 0 4px; }
+  #hud { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; font-family: 'Courier New', monospace; font-size: 15px; margin-bottom: 10px; }
+  #hud b { font-weight: normal; }
+  .ok { color: #4ade80; } .bad { color: #f87171; }
+  canvas { background: #050510; border: 2px solid #6b6b8d; border-radius: 10px; touch-action: none; max-width: 94vw; height: auto; }
+  #msg { margin-top: 12px; font-size: 16px; min-height: 22px; text-align: center; }
+  .controls { display: flex; gap: 8px; margin-top: 10px; }
+  .controls button, button.action { background: #f5c542; color: #191920; border: none; font-weight: bold; padding: 12px 18px; border-radius: 9px; font-size: 16px; cursor: pointer; touch-action: none; }
+  .controls button { background: #33334f; color: #eee; border: 1px solid #55557a; min-width: 74px; }
+  button.action { margin-top: 10px; }
+  #acct { margin-top: 14px; font-size: 14px; opacity: .9; }
+  #lb { margin-top: 10px; font-size: 14px; text-align: left; min-width: 250px; }
+</style>
+</head>
+<body>
+<a class="exit-game" href="/">← All games</a>
+<h1>🌕 Lunar Lander</h1>
+<div id="hud"><span>⛽ FUEL <b id="h-fuel">100</b></span><span>↕ SPEED <b id="h-vy">0.0</b></span><span>↔ DRIFT <b id="h-vx">0.0</b></span><span>🚀 SHIPS <b id="h-ships">3</b></span><span>⭐ SCORE <b id="h-score">0</b></span></div>
+<canvas id="c" width="520" height="420"></canvas>
+<div id="msg">Land softly on the gold pad: fall speed under 1.6, drift under 1.2. Hold ↑ or the THRUST button.</div>
+<div class="controls">
+  <button id="btn-left">◀ LEFT</button>
+  <button id="btn-thrust">🔥 THRUST</button>
+  <button id="btn-right">RIGHT ▶</button>
+</div>
+<button class="action" id="restart">▶ Launch</button>
+<div id="acct"></div>
+<div id="lb"></div>
+<script>
+const cvs = document.getElementById('c'), ctx = cvs.getContext('2d');
+const W = cvs.width, H = cvs.height;
+const GRAV = 0.055, THRUST = 0.13, SIDE = 0.075;
+let ship, terrain, pad, fuel, ships, score, state, keys = {}, parts = [], submitted, round;
+let stars = Array.from({ length: 90 }, () => ({ x: Math.random() * W, y: Math.random() * H * 0.7, s: Math.random() * 1.5 + 0.4 }));
+function makeTerrain() {
+  terrain = []; let y = H - 60;
+  pad = { x: 60 + Math.floor(Math.random() * 7) * 58, w: 56 };
+  for (let x = 0; x <= W; x += 26) {
+    if (x >= pad.x - 13 && x <= pad.x + pad.w + 13) { terrain.push({ x, y: H - 42 }); continue; }
+    y += (Math.random() - 0.5) * 34; y = Math.max(H - 130, Math.min(H - 34, y));
+    terrain.push({ x, y });
+  }
+}
+function groundAt(x) {
+  if (x >= pad.x && x <= pad.x + pad.w) return H - 42;
+  for (let i = 0; i < terrain.length - 1; i++) {
+    const a = terrain[i], b = terrain[i + 1];
+    if (x >= a.x && x <= b.x) return a.y + (b.y - a.y) * ((x - a.x) / (b.x - a.x));
+  }
+  return H - 42;
+}
+function launch() {
+  ship = { x: 50 + Math.random() * 60, y: 36, vx: 1.1 + Math.random() * 0.7, vy: 0 };
+  fuel = 100; state = 'play'; round++;
+  document.getElementById('msg').textContent = 'Land softly on the gold pad: fall speed under 1.6, drift under 1.2.';
+  hud();
+}
+function reset() {
+  ships = 3; score = 0; round = 0; submitted = false; makeTerrain(); ship = null; state = 'wait';
+  document.getElementById('restart').textContent = '▶ Launch';
+  hud();
+}
+function hud() {
+  document.getElementById('h-fuel').textContent = Math.max(0, Math.round(fuel));
+  document.getElementById('h-ships').textContent = ships;
+  document.getElementById('h-score').textContent = score;
+  const vy = document.getElementById('h-vy'), vx = document.getElementById('h-vx');
+  if (ship) {
+    vy.textContent = ship.vy.toFixed(1); vy.className = ship.vy <= 1.6 ? 'ok' : 'bad';
+    vx.textContent = ship.vx.toFixed(1); vx.className = Math.abs(ship.vx) <= 1.2 ? 'ok' : 'bad';
+  }
+}
+function boom(big) {
+  for (let i = 0; i < (big ? 42 : 20); i++) parts.push({ x: ship.x, y: ship.y, vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 4, life: 34 + Math.random() * 22, col: ['#f97316', '#facc15', '#ef4444'][i % 3] });
+}
+function endAttempt(success, text) {
+  state = 'down';
+  if (success) {
+    const bonus = Math.round(fuel) + Math.max(0, 60 - Math.round(Math.abs(ship.vy) * 22));
+    score += 100 + bonus;
+    document.getElementById('msg').textContent = `🎉 ${text} +${100 + bonus} points (fuel bonus included).`;
+  } else {
+    boom(true); ships--;
+    document.getElementById('msg').textContent = `💥 ${text} ${ships > 0 ? ships + ' ship(s) left.' : ''}`;
+  }
+  hud();
+  if (ships <= 0) {
+    state = 'over';
+    document.getElementById('msg').textContent += ` Final score: ${score}.`;
+    document.getElementById('restart').textContent = '▶ Play again';
+    if (!submitted) { submitted = true; submitScore(score); }
+  } else {
+    document.getElementById('restart').textContent = success ? '▶ Next landing' : '▶ Relaunch';
+  }
+}
+function step() {
+  requestAnimationFrame(step);
+  draw();
+  if (state !== 'play' || !ship) { parts = parts.filter(p => --p.life > 0); for (const p of parts) { p.x += p.vx; p.y += p.vy; } return; }
+  const thrusting = (keys.up || keys.thrust) && fuel > 0;
+  if (thrusting) { ship.vy -= THRUST; fuel -= 0.55; parts.push({ x: ship.x, y: ship.y + 13, vx: (Math.random() - 0.5), vy: 2 + Math.random(), life: 13, col: '#f97316' }); }
+  if (keys.left && fuel > 0) { ship.vx -= SIDE; fuel -= 0.22; }
+  if (keys.right && fuel > 0) { ship.vx += SIDE; fuel -= 0.22; }
+  ship.vy += GRAV;
+  ship.x += ship.vx; ship.y += ship.vy;
+  if (ship.x < 12) { ship.x = 12; ship.vx = Math.abs(ship.vx) * 0.5; }
+  if (ship.x > W - 12) { ship.x = W - 12; ship.vx = -Math.abs(ship.vx) * 0.5; }
+  if (ship.y < 10) { ship.y = 10; ship.vy = Math.max(0, ship.vy); }
+  parts = parts.filter(p => --p.life > 0);
+  for (const p of parts) { p.x += p.vx; p.y += p.vy; }
+  hud();
+  const g = groundAt(ship.x);
+  if (ship.y + 12 >= g) {
+    const onPad = ship.x >= pad.x && ship.x <= pad.x + pad.w;
+    if (onPad && ship.vy <= 1.6 && Math.abs(ship.vx) <= 1.2) endAttempt(true, 'Touchdown!');
+    else if (onPad) endAttempt(false, `Too rough — fall ${ship.vy.toFixed(1)}, drift ${ship.vx.toFixed(1)}.`);
+    else { ship.y = g - 12; endAttempt(false, 'You crashed into the surface.'); }
+  }
+}
+function draw() {
+  ctx.fillStyle = '#050510'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#dbeafe'; for (const s of stars) ctx.fillRect(s.x, s.y, s.s, s.s);
+  ctx.fillStyle = '#e5e7eb'; ctx.beginPath(); ctx.arc(W - 56, 46, 21, 0, 7); ctx.fill();
+  ctx.fillStyle = '#c9ced6'; ctx.beginPath(); ctx.arc(W - 64, 40, 5, 0, 7); ctx.arc(W - 48, 54, 4, 0, 7); ctx.fill();
+  // terrain
+  ctx.beginPath(); ctx.moveTo(0, H);
+  for (const t of terrain) ctx.lineTo(t.x, t.y);
+  ctx.lineTo(W, H); ctx.closePath();
+  ctx.fillStyle = '#8d8da3'; ctx.fill();
+  ctx.strokeStyle = '#c9c9da'; ctx.lineWidth = 2; ctx.beginPath();
+  terrain.forEach((t, i) => i ? ctx.lineTo(t.x, t.y) : ctx.moveTo(t.x, t.y)); ctx.stroke();
+  // pad
+  ctx.fillStyle = '#f5c542'; ctx.fillRect(pad.x, H - 42, pad.w, 6);
+  ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#f5c542'; ctx.fillText('▼ LAND HERE ▼', pad.x + pad.w / 2, H - 52);
+  // particles
+  for (const p of parts) { ctx.fillStyle = p.col; ctx.fillRect(p.x - 2, p.y - 2, 4, 4); }
+  // ship
+  if (ship && state !== 'over') {
+    ctx.save(); ctx.translate(ship.x, ship.y);
+    ctx.fillStyle = '#e8e8f2'; ctx.beginPath(); ctx.moveTo(0, -11); ctx.lineTo(8, 7); ctx.lineTo(-8, 7); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#60a5fa'; ctx.beginPath(); ctx.arc(0, -3, 3.4, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#9ca3af'; ctx.beginPath(); ctx.moveTo(-8, 7); ctx.lineTo(-11, 12); ctx.moveTo(8, 7); ctx.lineTo(11, 12); ctx.stroke();
+    ctx.restore();
+  }
+  if (state === 'wait') { ctx.fillStyle = '#fff'; ctx.font = 'bold 23px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('PRESS LAUNCH', W / 2, H / 2 - 40); }
+}
+function bindHold(id, key) {
+  const el = document.getElementById(id);
+  const on = e => { e.preventDefault(); keys[key] = true; };
+  const off = e => { e.preventDefault(); keys[key] = false; };
+  el.addEventListener('pointerdown', on); el.addEventListener('pointerup', off); el.addEventListener('pointerleave', off); el.addEventListener('pointercancel', off);
+}
+bindHold('btn-left', 'left'); bindHold('btn-right', 'right'); bindHold('btn-thrust', 'thrust');
+cvs.addEventListener('pointerdown', e => {
+  keys.thrust = true;
+  const r = cvs.getBoundingClientRect(), x = (e.clientX - r.left) * (W / r.width);
+  keys.left = x < W / 3; keys.right = x > 2 * W / 3;
+});
+cvs.addEventListener('pointerup', () => { keys.thrust = false; keys.left = false; keys.right = false; });
+cvs.addEventListener('pointerleave', () => { keys.thrust = false; keys.left = false; keys.right = false; });
+addEventListener('keydown', e => {
+  if (e.key === 'ArrowUp' || e.key === 'w') { keys.up = true; e.preventDefault(); }
+  if (e.key === 'ArrowLeft' || e.key === 'a') keys.left = true;
+  if (e.key === 'ArrowRight' || e.key === 'd') keys.right = true;
+});
+addEventListener('keyup', e => {
+  if (e.key === 'ArrowUp' || e.key === 'w') keys.up = false;
+  if (e.key === 'ArrowLeft' || e.key === 'a') keys.left = false;
+  if (e.key === 'ArrowRight' || e.key === 'd') keys.right = false;
+});
+document.getElementById('restart').onclick = () => {
+  if (state === 'over') { reset(); makeTerrain(); }
+  if (state === 'down' && document.getElementById('restart').textContent.includes('Next')) makeTerrain();
+  launch();
+};
+// --- Site account (the Miner Cat account works everywhere) ---
+let ME = null;
+const esc = s => String(s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+async function loadLb() {
+  try {
+    const d = await (await fetch('/api/scores/lander')).json();
+    document.getElementById('lb').innerHTML = '<b>🏆 Leaderboard</b>' + (d.scores.length ? d.scores.map((s, i) => `<br>${i + 1}. ${esc(s.displayName)} — ${s.score}`).join('') : '<br>No scores yet — be the first!');
+  } catch (e) {}
+}
+async function submitScore(s) {
+  if (!ME || !s) return;
+  try { await fetch('/api/scores', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ game: 'lander', score: s }) }); loadLb(); } catch (e) {}
+}
+(async () => {
+  try { const r = await fetch('/api/me'); if (r.ok) ME = (await r.json()).user; } catch (e) {}
+  document.getElementById('acct').innerHTML = ME ? `👤 Playing as <b>${esc(ME.displayName)}</b> — your best score saves to your account` : '👤 <a href="/miner-cat-2" style="color:#f5c542;">Sign in</a> to save scores to your account';
+  loadLb();
+})();
+reset(); requestAnimationFrame(step);
+</script>
+<script src="/games/admin-panel.js"></script>
+</body>
+</html>

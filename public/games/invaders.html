@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Space Invaders — Arqade</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #05050d; color: #d7ffe0; display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 16px; }
+  a.exit-game { display: inline-flex; align-items: center; align-self: flex-start; background: #101828; color: #7dff9a; border: 1px solid #2fbf71; border-radius: 9px; padding: 8px 14px; font-size: 15px; font-weight: 700; line-height: 1; text-decoration: none; }
+  h1 { font-size: 26px; margin: 8px 0 4px; letter-spacing: 2px; color: #7dff9a; text-shadow: 0 0 12px #2fbf71; }
+  #score { font-size: 17px; margin-bottom: 10px; font-family: 'Courier New', monospace; }
+  canvas { background: #020208; border: 2px solid #2fbf71; border-radius: 8px; touch-action: none; max-width: 94vw; height: auto; box-shadow: 0 0 24px rgba(47,191,113,.35); }
+  #msg { margin-top: 12px; font-size: 16px; min-height: 22px; text-align: center; font-family: 'Courier New', monospace; }
+  button.action { margin-top: 10px; background: #2fbf71; color: #04150a; border: none; font-weight: bold; padding: 10px 22px; border-radius: 9px; font-size: 16px; cursor: pointer; }
+  #acct { margin-top: 14px; font-size: 14px; opacity: .9; }
+  #lb { margin-top: 10px; font-size: 14px; text-align: left; min-width: 250px; }
+</style>
+</head>
+<body>
+<a class="exit-game" href="/">← All games</a>
+<h1>👾 SPACE INVADERS</h1>
+<div id="score">SCORE 0 · LIVES 3 · WAVE 1</div>
+<canvas id="c" width="520" height="430"></canvas>
+<div id="msg">Move with ◀ ▶ or your finger. Tap, click, or press Space to fire.</div>
+<button class="action" id="restart">▶ Start</button>
+<div id="acct"></div>
+<div id="lb"></div>
+<script>
+const cvs = document.getElementById('c'), ctx = cvs.getContext('2d');
+const W = cvs.width, H = cvs.height;
+let ship, bullets, ebullets, inv, dir, dropT, lives, score, wave, state, fireCd, ufo, stars, keys = {}, submitted;
+stars = Array.from({ length: 70 }, () => ({ x: Math.random() * W, y: Math.random() * H, s: Math.random() * 1.6 + 0.4 }));
+function makeWave() {
+  inv = [];
+  const rows = 5, cols = 8;
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++)
+    inv.push({ x: 62 + c * 50, y: 56 + r * 36, r, alive: true, pts: (5 - r) * 10 });
+  dir = 1; dropT = 0; bullets = []; ebullets = []; ufo = null;
+}
+function reset() {
+  ship = { x: W / 2, cd: 0 }; lives = 3; score = 0; wave = 1; state = 'wait'; fireCd = 0; submitted = false;
+  makeWave();
+  document.getElementById('msg').textContent = 'Move with ◀ ▶ or your finger. Tap, click, or press Space to fire.';
+  document.getElementById('restart').textContent = '▶ Start';
+  upd();
+}
+function upd() { document.getElementById('score').textContent = `SCORE ${score} · LIVES ${lives} · WAVE ${wave}`; }
+function start() { if (state === 'over') reset(); state = 'play'; document.getElementById('restart').textContent = '↻ Restart'; }
+function over() {
+  state = 'over';
+  document.getElementById('msg').textContent = `🛸 GAME OVER — final score ${score}. You reached wave ${wave}.`;
+  document.getElementById('restart').textContent = '▶ Play again';
+  if (!submitted) { submitted = true; submitScore(score); }
+}
+function step() {
+  requestAnimationFrame(step);
+  draw();
+  if (state !== 'play') return;
+  // ship
+  if (keys.left) ship.x -= 4.6;
+  if (keys.right) ship.x += 4.6;
+  ship.x = Math.max(22, Math.min(W - 22, ship.x));
+  fireCd -= 1;
+  if (keys.fire && fireCd <= 0) shoot();
+  // invader march
+  const alive = inv.filter(i => i.alive);
+  const speed = (0.32 + wave * 0.05) * (1 + (55 - alive.length) / 55);
+  let edge = false;
+  for (const i of alive) { i.x += dir * speed; if (i.x > W - 30 || i.x < 30) edge = true; }
+  if (edge) { dir *= -1; for (const i of alive) { i.y += 16; if (i.y > H - 78) return over(); } }
+  // invader fire
+  if (Math.random() < 0.016 + wave * 0.0015 && alive.length) {
+    const shooters = {};
+    for (const i of alive) if (!shooters[i.x] || shooters[i.x].y < i.y) shooters[i.x] = i;
+    const list = Object.values(shooters);
+    const s = list[Math.floor(Math.random() * list.length)];
+    ebullets.push({ x: s.x, y: s.y + 14, vy: 3.4 });
+  }
+  // ufo bonus
+  if (!ufo && Math.random() < 0.0012) ufo = { x: -30, vx: 1.7 };
+  if (ufo) { ufo.x += ufo.vx; if (ufo.x > W + 30) ufo = null; }
+  // bullets
+  for (const b of bullets) {
+    b.y -= 7.5;
+    if (ufo && Math.abs(b.x - ufo.x) < 22 && Math.abs(b.y - 26) < 12) { score += 100; ufo = null; b.y = -99; upd(); continue; }
+    for (const i of alive) {
+      if (i.alive && Math.abs(b.x - i.x) < 17 && Math.abs(b.y - i.y) < 13) {
+        i.alive = false; score += i.pts; b.y = -99; upd(); break;
+      }
+    }
+  }
+  bullets = bullets.filter(b => b.y > -12);
+  if (!inv.some(i => i.alive)) { wave++; makeWave(); document.getElementById('msg').textContent = `🌊 Wave ${wave}! They march faster now.`; upd(); return; }
+  for (const b of ebullets) {
+    b.y += b.vy;
+    if (Math.abs(b.x - ship.x) < 17 && b.y > H - 52 && b.y < H - 22) {
+      b.y = H + 99; lives--; upd();
+      if (lives <= 0) return over();
+      document.getElementById('msg').textContent = `💥 Hit! ${lives} ${lives === 1 ? 'life' : 'lives'} left.`;
+    }
+  }
+  ebullets = ebullets.filter(b => b.y < H + 12);
+}
+function shoot() { bullets.push({ x: ship.x, y: H - 56 }); fireCd = 13; }
+function drawShip(x) {
+  ctx.fillStyle = '#39d353';
+  ctx.beginPath(); ctx.moveTo(x, H - 52); ctx.lineTo(x - 16, H - 28); ctx.lineTo(x - 6, H - 28); ctx.lineTo(x - 6, H - 36); ctx.lineTo(x + 6, H - 36); ctx.lineTo(x + 6, H - 28); ctx.lineTo(x + 16, H - 28); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#a7f3c7'; ctx.fillRect(x - 2, H - 46, 4, 8);
+}
+function draw() {
+  ctx.fillStyle = '#020208'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#cfe8ff';
+  for (const s of stars) ctx.fillRect(s.x, s.y, s.s, s.s);
+  if (ufo) { ctx.font = '24px serif'; ctx.textAlign = 'center'; ctx.fillText('🛸', ufo.x, 32); }
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (const i of inv) if (i.alive) { ctx.font = '26px serif'; ctx.fillText(i.r === 0 ? '🦑' : i.r < 3 ? '👾' : '👽', i.x, i.y); }
+  ctx.fillStyle = '#f5c542';
+  for (const b of bullets) ctx.fillRect(b.x - 2, b.y - 7, 4, 12);
+  ctx.fillStyle = '#ff5f56';
+  for (const b of ebullets) ctx.fillRect(b.x - 2, b.y - 6, 4, 11);
+  drawShip(ship.x);
+  ctx.fillStyle = 'rgba(57,211,83,.25)'; ctx.fillRect(0, H - 18, W, 2);
+  if (state === 'wait') { ctx.fillStyle = '#7dff9a'; ctx.font = 'bold 24px Courier New'; ctx.fillText('PRESS START', W / 2, H / 2); }
+}
+let pointerX = null;
+cvs.addEventListener('pointermove', e => { const r = cvs.getBoundingClientRect(); pointerX = (e.clientX - r.left) * (W / r.width); ship.x = Math.max(22, Math.min(W - 22, pointerX)); });
+cvs.addEventListener('pointerdown', e => { const r = cvs.getBoundingClientRect(); ship.x = Math.max(22, Math.min(W - 22, (e.clientX - r.left) * (W / r.width))); if (state === 'play' && fireCd <= 0) shoot(); if (state === 'wait') start(); });
+addEventListener('keydown', e => {
+  if (e.key === 'ArrowLeft') { keys.left = true; e.preventDefault(); }
+  if (e.key === 'ArrowRight') { keys.right = true; e.preventDefault(); }
+  if (e.key === ' ') { keys.fire = true; e.preventDefault(); if (state === 'wait') start(); }
+});
+addEventListener('keyup', e => { if (e.key === 'ArrowLeft') keys.left = false; if (e.key === 'ArrowRight') keys.right = false; if (e.key === ' ') keys.fire = false; });
+document.getElementById('restart').onclick = () => { if (state === 'play') reset(); start(); };
+// --- Site account (the Miner Cat account works everywhere) ---
+let ME = null;
+const esc = s => String(s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+async function loadLb() {
+  try {
+    const d = await (await fetch('/api/scores/invaders')).json();
+    document.getElementById('lb').innerHTML = '<b>🏆 Leaderboard</b>' + (d.scores.length ? d.scores.map((s, i) => `<br>${i + 1}. ${esc(s.displayName)} — ${s.score}`).join('') : '<br>No scores yet — be the first!');
+  } catch (e) {}
+}
+async function submitScore(s) {
+  if (!ME || !s) return;
+  try { await fetch('/api/scores', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ game: 'invaders', score: s }) }); loadLb(); } catch (e) {}
+}
+(async () => {
+  try { const r = await fetch('/api/me'); if (r.ok) ME = (await r.json()).user; } catch (e) {}
+  document.getElementById('acct').innerHTML = ME ? `👤 Playing as <b>${esc(ME.displayName)}</b> — your best score saves to your account` : '👤 <a href="/miner-cat-2" style="color:#f5c542;">Sign in</a> to save scores to your account';
+  loadLb();
+})();
+reset(); requestAnimationFrame(step);
+</script>
+<script src="/games/admin-panel.js"></script>
+</body>
+</html>

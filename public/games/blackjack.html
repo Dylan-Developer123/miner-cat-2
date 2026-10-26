@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Blackjack — Arqade</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Georgia, 'Times New Roman', serif; background: #1a120b; color: #f3e9d2; display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 16px; }
+  a.exit-game { display: inline-flex; align-items: center; align-self: flex-start; background: #2b1d10; color: #f3e9d2; border: 1px solid #8a6d3b; border-radius: 9px; padding: 8px 14px; font-size: 15px; font-weight: 700; line-height: 1; text-decoration: none; font-family: 'Segoe UI', system-ui, sans-serif; }
+  h1 { font-size: 28px; margin: 10px 0 2px; color: #f5c542; letter-spacing: 1px; }
+  .sub { font-style: italic; opacity: .8; font-size: 14px; margin-bottom: 12px; }
+  #table { background: radial-gradient(ellipse at center, #1e7a46 0%, #14532d 72%); border: 10px solid #6b4423; border-radius: 46px; width: min(620px, 94vw); padding: 22px 16px 26px; box-shadow: inset 0 0 40px rgba(0,0,0,.5), 0 10px 30px rgba(0,0,0,.5); text-align: center; }
+  .hand-label { font-size: 14px; letter-spacing: 2px; text-transform: uppercase; opacity: .9; margin: 6px 0; }
+  .hand-label b { color: #f5c542; }
+  .cards { display: flex; gap: 8px; justify-content: center; min-height: 96px; flex-wrap: wrap; margin-bottom: 8px; }
+  .card { width: 66px; height: 94px; background: #fffdf5; border-radius: 8px; box-shadow: 0 3px 8px rgba(0,0,0,.4); position: relative; font-family: 'Segoe UI', sans-serif; animation: deal .18s ease-out; }
+  @keyframes deal { from { transform: translateY(-14px) rotate(-3deg); opacity: 0; } to { transform: none; opacity: 1; } }
+  .card .tl { position: absolute; top: 5px; left: 7px; font-size: 17px; font-weight: bold; line-height: 1.05; text-align: center; }
+  .card .pip { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 34px; }
+  .card.red { color: #c22424; } .card.black { color: #1c1c22; }
+  .card.back { background: repeating-linear-gradient(45deg, #7f1d1d 0 8px, #991b1b 8px 16px); border: 3px solid #fffdf5; }
+  #msg { min-height: 26px; font-size: 18px; margin: 8px 0 2px; }
+  #chips { font-size: 17px; margin-top: 6px; }
+  #chips b { color: #f5c542; }
+  .row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 12px; }
+  button { font-family: 'Segoe UI', sans-serif; font-weight: bold; border: none; border-radius: 9px; padding: 11px 18px; font-size: 15px; cursor: pointer; }
+  button:disabled { opacity: .4; cursor: default; }
+  .chip { border-radius: 50%; width: 56px; height: 56px; border: 5px dashed #fff8; color: #fff; font-size: 14px; padding: 0; }
+  .chip.c25 { background: #2563eb; } .chip.c50 { background: #16a34a; } .chip.c100 { background: #111827; } .chip.c500 { background: #7c3aed; }
+  .act { background: #f5c542; color: #231a05; }
+  .act2 { background: #e7e5e4; color: #1c1917; }
+  .cash { background: #065f46; color: #d1fae5; }
+  #acct { margin-top: 16px; font-size: 14px; opacity: .9; font-family: 'Segoe UI', system-ui, sans-serif; }
+  #lb { margin-top: 10px; font-size: 14px; text-align: left; min-width: 250px; font-family: 'Segoe UI', system-ui, sans-serif; }
+</style>
+</head>
+<body>
+<a class="exit-game" href="/">← All games</a>
+<h1>🃏 Blackjack</h1>
+<div class="sub">Beat the dealer to 21. Blackjack pays 3 : 2. Dealer stands on 17.</div>
+<div id="table">
+  <div class="hand-label">Dealer <b id="d-total"></b></div>
+  <div class="cards" id="d-cards"></div>
+  <div id="msg">Place your bet to start.</div>
+  <div class="cards" id="p-cards"></div>
+  <div class="hand-label">Your hand <b id="p-total"></b></div>
+  <div id="chips">🪙 Your chips: <b id="bank">1000</b> · Bet: <b id="bet">0</b> · Peak: <b id="peak">1000</b></div>
+  <div class="row" id="bet-row">
+    <button class="chip c25" data-bet="25">25</button>
+    <button class="chip c50" data-bet="50">50</button>
+    <button class="chip c100" data-bet="100">100</button>
+    <button class="chip c500" data-bet="500">500</button>
+    <button class="act2" id="allin">All in</button>
+    <button class="act" id="deal" disabled>Deal</button>
+  </div>
+  <div class="row" id="play-row" style="display:none;">
+    <button class="act" id="hit">Hit</button>
+    <button class="act2" id="stand">Stand</button>
+    <button class="act2" id="double">Double</button>
+  </div>
+  <div class="row">
+    <button class="cash" id="cashout">💰 Cash out (save score)</button>
+    <button class="act2" id="reset" style="display:none;">↻ New 1000 chips</button>
+  </div>
+</div>
+<div id="acct"></div>
+<div id="lb"></div>
+<script>
+const SUITS = ['♠', '♥', '♦', '♣'];
+const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+let bank = 1000, peak = 1000, bet = 0, deck = [], player = [], dealer = [], phase = 'bet', holeHidden = true, submitted = false;
+const $ = id => document.getElementById(id);
+function buildDeck() {
+  deck = [];
+  for (const s of SUITS) for (const r of RANKS) deck.push({ r, s });
+  for (let i = deck.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [deck[i], deck[j]] = [deck[j], deck[i]]; }
+}
+function val(hand) {
+  let t = 0, aces = 0;
+  for (const c of hand) { if (c.r === 'A') { t += 11; aces++; } else if ('KQJ'.includes(c.r)) t += 10; else t += +c.r; }
+  while (t > 21 && aces) { t -= 10; aces--; }
+  return t;
+}
+function cardEl(c, back) {
+  const d = document.createElement('div');
+  if (back) { d.className = 'card back'; return d; }
+  d.className = 'card ' + ((c.s === '♥' || c.s === '♦') ? 'red' : 'black');
+  d.innerHTML = `<div class="tl">${c.r}<br>${c.s}</div><div class="pip">${c.s}</div>`;
+  return d;
+}
+function render() {
+  $('p-cards').innerHTML = ''; player.forEach(c => $('p-cards').appendChild(cardEl(c)));
+  $('d-cards').innerHTML = ''; dealer.forEach((c, i) => $('d-cards').appendChild(cardEl(c, holeHidden && i === 1)));
+  $('p-total').textContent = player.length ? '— ' + val(player) : '';
+  $('d-total').textContent = dealer.length ? (holeHidden ? '— ' + val([dealer[0]]) + ' + ?' : '— ' + val(dealer)) : '';
+  $('bank').textContent = bank; $('bet').textContent = bet; $('peak').textContent = peak;
+  $('deal').disabled = !(phase === 'bet' && bet > 0);
+  $('bet-row').style.display = phase === 'bet' ? 'flex' : 'none';
+  $('play-row').style.display = phase === 'play' ? 'flex' : 'none';
+  $('double').disabled = player.length !== 2 || bank < bet;
+}
+function settle(text, payout) {
+  bank += payout; bet = 0; phase = 'bet'; holeHidden = false;
+  peak = Math.max(peak, bank);
+  $('msg').textContent = text;
+  if (bank <= 0) {
+    $('msg').textContent = '💸 Out of chips! Your peak was ' + peak + '.';
+    $('reset').style.display = 'inline-block';
+    if (!submitted) { submitted = true; submitScore(peak); }
+  }
+  render();
+}
+function dealerPlay() {
+  holeHidden = false; render();
+  while (val(dealer) < 17) dealer.push(deck.pop());
+  const dv = val(dealer), pv = val(player);
+  render();
+  if (dv > 21) settle(`🎉 Dealer busts with ${dv}! You win ${bet}.`, bet * 2);
+  else if (pv > dv) settle(`🎉 You win ${bet}! ${pv} beats ${dv}.`, bet * 2);
+  else if (pv < dv) settle(`😞 Dealer wins, ${dv} to ${pv}. You lose ${bet}.`, 0);
+  else settle(`🤝 Push at ${pv} — your ${bet} chips come back.`, bet);
+}
+document.querySelectorAll('[data-bet]').forEach(b => b.onclick = () => {
+  const n = +b.dataset.bet;
+  if (phase !== 'bet' || bank < n) return;
+  bank -= n; bet += n; $('msg').textContent = 'Bet: ' + bet + ' chips. Press Deal!'; submitted = false; render();
+});
+$('allin').onclick = () => { if (phase === 'bet' && bank > 0) { bet += bank; bank = 0; $('msg').textContent = '😤 ALL IN — ' + bet + ' chips! Press Deal!'; render(); } };
+$('deal').onclick = () => {
+  if (deck.length < 15) buildDeck();
+  player = [deck.pop(), deck.pop()]; dealer = [deck.pop(), deck.pop()];
+  holeHidden = true; phase = 'play';
+  const pv = val(player), dv = val(dealer);
+  if (pv === 21 && dv === 21) { holeHidden = false; settle('😐 Both blackjack — push, bet returned.', bet); return; }
+  if (pv === 21) { holeHidden = false; settle(`🃏 BLACKJACK! Pays 3:2 — you win ${Math.floor(bet * 1.5)}.`, bet + Math.floor(bet * 1.5)); return; }
+  $('msg').textContent = 'Hit, stand, or double?';
+  render();
+};
+$('hit').onclick = () => {
+  if (phase !== 'play') return;
+  player.push(deck.pop()); render();
+  if (val(player) > 21) settle(`💥 Bust with ${val(player)}! You lose ${bet}.`, 0);
+};
+$('stand').onclick = () => { if (phase === 'play') { phase = 'dealer'; dealerPlay(); } };
+$('double').onclick = () => {
+  if (phase !== 'play' || player.length !== 2 || bank < bet) return;
+  bank -= bet; bet *= 2; player.push(deck.pop()); render();
+  if (val(player) > 21) settle(`💥 Bust with ${val(player)} on the double! You lose ${bet}.`, 0);
+  else { phase = 'dealer'; dealerPlay(); }
+};
+$('cashout').onclick = () => {
+  if (bet > 0) { $('msg').textContent = 'Finish the hand first — or win it! 💪'; return; }
+  if (peak <= 1000) { $('msg').textContent = 'Win some chips first — your peak has to beat 1000 to hit the leaderboard!'; return; }
+  submitted = true; submitScore(peak);
+  $('msg').textContent = `💰 Cashed out! Score saved: peak of ${peak} chips. Keep playing if you want — beat your peak!`;
+};
+$('reset').onclick = () => { bank = 1000; peak = 1000; bet = 0; phase = 'bet'; player = []; dealer = []; submitted = false; $('reset').style.display = 'none'; $('msg').textContent = 'Fresh 1000 chips. Place your bet!'; render(); };
+buildDeck(); render();
+// --- Site account (the Miner Cat account works everywhere) ---
+let ME = null;
+const esc = s => String(s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+async function loadLb() {
+  try {
+    const d = await (await fetch('/api/scores/blackjack')).json();
+    document.getElementById('lb').innerHTML = '<b>🏆 Leaderboard (best chip peak)</b>' + (d.scores.length ? d.scores.map((s, i) => `<br>${i + 1}. ${esc(s.displayName)} — ${s.score}`).join('') : '<br>No scores yet — be the first!');
+  } catch (e) {}
+}
+async function submitScore(s) {
+  if (!ME || !s) return;
+  try { await fetch('/api/scores', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ game: 'blackjack', score: s }) }); loadLb(); } catch (e) {}
+}
+(async () => {
+  try { const r = await fetch('/api/me'); if (r.ok) ME = (await r.json()).user; } catch (e) {}
+  document.getElementById('acct').innerHTML = ME ? `👤 Playing as <b>${esc(ME.displayName)}</b> — your chip peak saves to your account` : '👤 <a href="/miner-cat-2" style="color:#f5c542;">Sign in</a> to save scores to your account';
+  loadLb();
+})();
+</script>
+<script src="/games/admin-panel.js"></script>
+</body>
+</html>

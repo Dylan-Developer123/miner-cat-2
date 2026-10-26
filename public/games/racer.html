@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Turbo Racer — Arqade</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #10160f; color: #eef; display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 16px; }
+  a.exit-game { display: inline-flex; align-items: center; align-self: flex-start; background: #101828; color: #dcefe2; border: 1px solid #3b4b3f; border-radius: 9px; padding: 8px 14px; font-size: 15px; font-weight: 700; line-height: 1; text-decoration: none; }
+  h1 { font-size: 26px; margin: 8px 0 4px; font-style: italic; }
+  #score { font-size: 17px; margin-bottom: 10px; font-family: 'Courier New', monospace; }
+  canvas { background: #3a3f3a; border: 3px solid #222; border-radius: 10px; touch-action: none; max-width: 94vw; height: auto; }
+  #msg { margin-top: 12px; font-size: 16px; min-height: 22px; text-align: center; }
+  button.action { margin-top: 10px; background: #e11d48; color: #fff; border: none; font-weight: bold; padding: 10px 22px; border-radius: 9px; font-size: 16px; cursor: pointer; }
+  #acct { margin-top: 14px; font-size: 14px; opacity: .9; }
+  #lb { margin-top: 10px; font-size: 14px; text-align: left; min-width: 250px; }
+</style>
+</head>
+<body>
+<a class="exit-game" href="/">← All games</a>
+<h1>🏎️ TURBO RACER</h1>
+<div id="score">DIST 0 m · SPEED 0 · LIVES 3</div>
+<canvas id="c" width="400" height="520"></canvas>
+<div id="msg">Steer with ◀ ▶ or drag. ↑ speeds up, ↓ brakes. Near misses earn bonus points!</div>
+<button class="action" id="restart">▶ Start engine</button>
+<div id="acct"></div>
+<div id="lb"></div>
+<script>
+const cvs = document.getElementById('c'), ctx = cvs.getContext('2d');
+const W = cvs.width, H = cvs.height;
+const ROAD = { x: 52, w: 296 };
+const LANES = [ROAD.x + 37, ROAD.x + 111, ROAD.x + 185, ROAD.x + 259];
+let car, traffic, dist, speed, baseSpeed, lives, state, keys = {}, spawnT, shake, submitted, nearMissCd;
+const COLORS = ['#3b82f6', '#a855f7', '#f59e0b', '#10b981', '#ec4899', '#e5e7eb'];
+function reset() {
+  car = { x: LANES[1], y: H - 78, w: 34, h: 56 };
+  traffic = []; dist = 0; speed = 0; baseSpeed = 5.2; lives = 3; state = 'wait'; spawnT = 0; shake = 0; submitted = false; nearMissCd = 0; bonusPts = 0;
+  document.getElementById('msg').textContent = 'Steer with ◀ ▶ or drag. ↑ speeds up, ↓ brakes. Near misses earn bonus points!';
+  document.getElementById('restart').textContent = '▶ Start engine';
+  upd();
+}
+function upd() { document.getElementById('score').textContent = `DIST ${Math.floor(dist)} m · SPEED ${Math.round(speed * 18)} · LIVES ${lives} · SCORE ${score()}`; }
+function score() { return Math.floor(dist) + bonusPts; }
+let bonusPts = 0;
+function over() {
+  state = 'over'; shake = 16;
+  document.getElementById('msg').textContent = `💥 Wrecked! Final score ${score()} — ${Math.floor(dist)} m driven.`;
+  document.getElementById('restart').textContent = '▶ Race again';
+  if (!submitted) { submitted = true; submitScore(score()); }
+}
+function step() {
+  requestAnimationFrame(step);
+  draw();
+  if (state !== 'play') return;
+  // speed control
+  const target = keys.up ? baseSpeed + 3.4 : keys.down ? baseSpeed - 2.8 : baseSpeed;
+  speed += (target - speed) * 0.03;
+  baseSpeed = Math.min(9.5, baseSpeed + 0.0011); // traffic thickens & speeds up over time
+  dist += speed * 0.16;
+  // steering
+  if (keys.left) car.x -= 4.4;
+  if (keys.right) car.x += 4.4;
+  car.x = Math.max(ROAD.x + 20, Math.min(ROAD.x + ROAD.w - 20, car.x));
+  // spawn traffic
+  spawnT -= 1;
+  if (spawnT <= 0) {
+    spawnT = Math.max(26, 62 - Math.floor(dist / 260));
+    const lane = LANES[Math.floor(Math.random() * LANES.length)];
+    if (!traffic.some(t => Math.abs(t.x - lane) < 40 && t.y < 90))
+      traffic.push({ x: lane, y: -70, w: 34, h: 56, v: 1.5 + Math.random() * 1.6, col: COLORS[Math.floor(Math.random() * COLORS.length)], passed: false });
+  }
+  nearMissCd = Math.max(0, nearMissCd - 1);
+  for (const t of traffic) {
+    t.y += Math.max(0.6, speed - t.v) * 0.92;
+    // collision
+    if (Math.abs(t.x - car.x) < 32 && Math.abs(t.y + 28 - (car.y + 28)) < 52) {
+      traffic = traffic.filter(o => o !== t);
+      lives--; shake = 12; upd();
+      if (lives <= 0) return over();
+      document.getElementById('msg').textContent = `💥 Crash! ${lives} ${lives === 1 ? 'life' : 'lives'} left — watch the traffic!`;
+      continue;
+    }
+    // near miss: passes alongside your car close by
+    if (!t.passed && t.y > car.y + 30) {
+      t.passed = true;
+      const gap = Math.abs(t.x - car.x);
+      if (gap >= 32 && gap < 52 && nearMissCd <= 0) { bonusPts += 25; nearMissCd = 20; document.getElementById('msg').textContent = '😱 Near miss! +25'; }
+    }
+  }
+  traffic = traffic.filter(t => t.y < H + 90);
+  upd();
+}
+function drawCar(x, y, col, player) {
+  ctx.save(); ctx.translate(x, y);
+  ctx.fillStyle = 'rgba(0,0,0,.35)'; roundRect(-18, -26, 36, 57, 9); ctx.fill();
+  ctx.fillStyle = col; roundRect(-16, -28, 32, 53, 8); ctx.fill();
+  ctx.fillStyle = '#1f2937'; roundRect(-12, -16, 24, 13, 4); ctx.fill();
+  ctx.fillStyle = '#374151'; roundRect(-12, 8, 24, 10, 4); ctx.fill();
+  ctx.fillStyle = player ? '#fde68a' : '#fef3c7'; ctx.fillRect(-14, -27, 6, 4); ctx.fillRect(8, -27, 6, 4);
+  ctx.fillStyle = '#ef4444'; ctx.fillRect(-14, 21, 6, 4); ctx.fillRect(8, 21, 6, 4);
+  ctx.fillStyle = '#111'; ctx.fillRect(-19, -20, 5, 12); ctx.fillRect(14, -20, 5, 12); ctx.fillRect(-19, 8, 5, 12); ctx.fillRect(14, 8, 5, 12);
+  ctx.restore();
+}
+function roundRect(x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+let lineOff = 0;
+function draw() {
+  ctx.save();
+  if (shake > 0) { ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake); shake *= 0.88; if (shake < 0.4) shake = 0; }
+  // grass
+  ctx.fillStyle = '#2e6b34'; ctx.fillRect(-20, -20, W + 40, H + 40);
+  ctx.fillStyle = '#35793c';
+  for (let i = 0; i < 12; i++) ctx.fillRect((i * 67) % W, ((i * 131 + Math.floor(dist * 3)) % (H + 40)) - 20, 6, 14);
+  // road
+  ctx.fillStyle = '#3f454b'; ctx.fillRect(ROAD.x, -20, ROAD.w, H + 40);
+  ctx.fillStyle = '#f8fafc'; ctx.fillRect(ROAD.x - 5, -20, 5, H + 40); ctx.fillRect(ROAD.x + ROAD.w, -20, 5, H + 40);
+  ctx.fillStyle = '#ef4444';
+  for (let y = -40; y < H + 40; y += 44) { const yy = y + (lineOff % 44); ctx.fillRect(ROAD.x - 5, yy, 5, 22); ctx.fillRect(ROAD.x + ROAD.w, yy, 5, 22); }
+  // lane dashes
+  ctx.fillStyle = '#fbbf24';
+  lineOff = (dist * 6.2) % 46;
+  for (let l = 1; l < 4; l++) {
+    const x = ROAD.x + l * (ROAD.w / 4);
+    for (let y = -46; y < H + 46; y += 46) ctx.fillRect(x - 2, y + lineOff, 4, 24);
+  }
+  for (const t of traffic) drawCar(t.x, t.y + 28, t.col, false);
+  drawCar(car.x, car.y + 28, '#e11d48', true);
+  ctx.restore();
+  if (state === 'wait') { ctx.fillStyle = '#fff'; ctx.font = 'bold 24px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('PRESS START', W / 2, H / 2); }
+}
+let dragX = null;
+cvs.addEventListener('pointerdown', e => { dragX = e.clientX; if (state === 'wait') start(); });
+cvs.addEventListener('pointermove', e => {
+  if (dragX === null) return;
+  const r = cvs.getBoundingClientRect();
+  car.x += (e.clientX - dragX) * (W / r.width) * 1.15; dragX = e.clientX;
+  car.x = Math.max(ROAD.x + 20, Math.min(ROAD.x + ROAD.w - 20, car.x));
+});
+addEventListener('pointerup', () => dragX = null);
+function start() { if (state === 'over') reset(); state = 'play'; document.getElementById('restart').textContent = '↻ Restart'; }
+addEventListener('keydown', e => {
+  if (e.key === 'ArrowLeft') { keys.left = true; e.preventDefault(); }
+  if (e.key === 'ArrowRight') { keys.right = true; e.preventDefault(); }
+  if (e.key === 'ArrowUp') { keys.up = true; e.preventDefault(); }
+  if (e.key === 'ArrowDown') { keys.down = true; e.preventDefault(); }
+});
+addEventListener('keyup', e => { if (e.key === 'ArrowLeft') keys.left = false; if (e.key === 'ArrowRight') keys.right = false; if (e.key === 'ArrowUp') keys.up = false; if (e.key === 'ArrowDown') keys.down = false; });
+document.getElementById('restart').onclick = () => { if (state === 'play') reset(); start(); };
+// --- Site account (the Miner Cat account works everywhere) ---
+let ME = null;
+const esc = s => String(s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+async function loadLb() {
+  try {
+    const d = await (await fetch('/api/scores/racer')).json();
+    document.getElementById('lb').innerHTML = '<b>🏆 Leaderboard</b>' + (d.scores.length ? d.scores.map((s, i) => `<br>${i + 1}. ${esc(s.displayName)} — ${s.score}`).join('') : '<br>No scores yet — be the first!');
+  } catch (e) {}
+}
+async function submitScore(s) {
+  if (!ME || !s) return;
+  try { await fetch('/api/scores', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ game: 'racer', score: s }) }); loadLb(); } catch (e) {}
+}
+(async () => {
+  try { const r = await fetch('/api/me'); if (r.ok) ME = (await r.json()).user; } catch (e) {}
+  document.getElementById('acct').innerHTML = ME ? `👤 Playing as <b>${esc(ME.displayName)}</b> — your best score saves to your account` : '👤 <a href="/miner-cat-2" style="color:#f5c542;">Sign in</a> to save scores to your account';
+  loadLb();
+})();
+reset(); bonusPts = 0; requestAnimationFrame(step);
+</script>
+<script src="/games/admin-panel.js"></script>
+</body>
+</html>
