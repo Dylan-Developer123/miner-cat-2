@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>2048 — Arqade</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #12121c; color: #eee; display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 16px; }
+  a.exit-game { display: inline-flex; align-items: center; align-self: flex-start; background: #26264a; color: #eee; border: 1px solid #55557a; border-radius: 9px; padding: 8px 14px; font-size: 15px; font-weight: 700; line-height: 1; text-decoration: none; }
+  h1 { font-size: 26px; margin: 8px 0 4px; }
+  #score { font-size: 18px; margin-bottom: 10px; }
+  #board { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; width: min(440px, 94vw); background: #3b2f2f; padding: 9px; border-radius: 14px; touch-action: none; }
+  .cell { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; border-radius: 9px; background: #574848; color: #fff; font-weight: 800; font-size: clamp(22px, 7vw, 36px); }
+  .v2 { background: #eee4da; color: #776e65; } .v4 { background: #ede0c8; color: #776e65; }
+  .v8 { background: #f2b179; } .v16 { background: #f59563; } .v32 { background: #f67c5f; }
+  .v64 { background: #f65e3b; } .v128 { background: #edcf72; font-size: clamp(19px, 6vw, 32px); }
+  .v256 { background: #edcc61; font-size: clamp(19px, 6vw, 32px); } .v512 { background: #edc850; font-size: clamp(19px, 6vw, 32px); }
+  .v1024 { background: #edc53f; font-size: clamp(16px, 5vw, 27px); } .v2048 { background: #edc22e; font-size: clamp(16px, 5vw, 27px); box-shadow: 0 0 18px #f5c542; }
+  .big { background: #3c3a32; font-size: clamp(14px, 4.5vw, 24px); }
+  #msg { margin-top: 12px; font-size: 16px; min-height: 22px; text-align: center; }
+  button.action { margin-top: 10px; background: #f5c542; color: #191920; border: none; font-weight: bold; padding: 10px 22px; border-radius: 9px; font-size: 16px; cursor: pointer; }
+  #acct { margin-top: 14px; font-size: 14px; opacity: .9; }
+  #lb { margin-top: 10px; font-size: 14px; text-align: left; min-width: 250px; }
+</style>
+</head>
+<body>
+<a class="exit-game" href="/">← All games</a>
+<h1>🔢 2048</h1>
+<div id="score">Score: 0 · Best tile: 0</div>
+<div id="board"></div>
+<div id="msg">Use arrow keys, WASD, or swipe to combine matching numbers.</div>
+<button class="action" id="restart">↻ New game</button>
+<div id="acct"></div>
+<div id="lb"></div>
+<script>
+let board, score, over, submitted;
+function emptyCells() { return board.map((v, i) => v ? null : i).filter(v => v !== null); }
+function spawn() { const cells = emptyCells(); if (!cells.length) return; board[cells[Math.floor(Math.random() * cells.length)]] = Math.random() < 0.9 ? 2 : 4; }
+function reset() { board = Array(16).fill(0); score = 0; over = false; submitted = false; spawn(); spawn(); document.getElementById('msg').textContent = 'Use arrow keys, WASD, or swipe to combine matching numbers.'; draw(); }
+function draw() {
+  const el = document.getElementById('board'); el.innerHTML = '';
+  board.forEach(v => { const d = document.createElement('div'); d.className = 'cell ' + (v ? (v <= 2048 ? 'v' + v : 'big') : ''); d.textContent = v || ''; el.appendChild(d); });
+  document.getElementById('score').textContent = `Score: ${score} · Best tile: ${Math.max(...board)}`;
+}
+function lines(dir) {
+  const all = [];
+  for (let n = 0; n < 4; n++) {
+    const line = [];
+    for (let k = 0; k < 4; k++) {
+      let r, c;
+      if (dir === 'left') { r = n; c = k; }
+      if (dir === 'right') { r = n; c = 3 - k; }
+      if (dir === 'up') { r = k; c = n; }
+      if (dir === 'down') { r = 3 - k; c = n; }
+      line.push(r * 4 + c);
+    }
+    all.push(line);
+  }
+  return all;
+}
+function move(dir) {
+  if (over) return;
+  const before = board.join(',');
+  for (const line of lines(dir)) {
+    const vals = line.map(i => board[i]).filter(Boolean);
+    const merged = [];
+    for (let i = 0; i < vals.length; i++) {
+      if (vals[i] === vals[i + 1]) { const v = vals[i] * 2; merged.push(v); score += v; i++; }
+      else merged.push(vals[i]);
+    }
+    while (merged.length < 4) merged.push(0);
+    line.forEach((idx, i) => board[idx] = merged[i]);
+  }
+  if (board.join(',') === before) return;
+  spawn(); draw();
+  if (!movesLeft()) gameOver();
+}
+function movesLeft() {
+  if (emptyCells().length) return true;
+  for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) {
+    const v = board[r * 4 + c];
+    if (c < 3 && v === board[r * 4 + c + 1]) return true;
+    if (r < 3 && v === board[(r + 1) * 4 + c]) return true;
+  }
+  return false;
+}
+function gameOver() {
+  over = true;
+  document.getElementById('msg').textContent = `🧱 No moves left! Final score: ${score}`;
+  if (!submitted) { submitted = true; submitScore(score); }
+}
+addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  const map = { arrowleft: 'left', a: 'left', arrowright: 'right', d: 'right', arrowup: 'up', w: 'up', arrowdown: 'down', s: 'down' };
+  if (map[k]) { e.preventDefault(); move(map[k]); }
+});
+let touch = null;
+const boardEl = document.getElementById('board');
+boardEl.addEventListener('pointerdown', e => touch = { x: e.clientX, y: e.clientY });
+boardEl.addEventListener('pointerup', e => {
+  if (!touch) return;
+  const dx = e.clientX - touch.x, dy = e.clientY - touch.y; touch = null;
+  if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) return;
+  move(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up'));
+});
+document.getElementById('restart').onclick = reset;
+// --- Site account (the Miner Cat account works everywhere) ---
+let ME = null;
+const esc = s => String(s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+async function loadLb() {
+  try {
+    const d = await (await fetch('/api/scores/2048')).json();
+    document.getElementById('lb').innerHTML = '<b>🏆 Leaderboard</b>' + (d.scores.length ? d.scores.map((s, i) => `<br>${i + 1}. ${esc(s.displayName)} — ${s.score}`).join('') : '<br>No scores yet — be the first!');
+  } catch (e) {}
+}
+async function submitScore(s) {
+  if (!ME || !s) return;
+  try { await fetch('/api/scores', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ game: '2048', score: s }) }); loadLb(); } catch (e) {}
+}
+(async () => {
+  try { const r = await fetch('/api/me'); if (r.ok) ME = (await r.json()).user; } catch (e) {}
+  document.getElementById('acct').innerHTML = ME ? `👤 Playing as <b>${esc(ME.displayName)}</b> — your best score saves to your account` : '👤 <a href="/miner-cat-2" style="color:#f5c542;">Sign in</a> to save scores to your account';
+  loadLb();
+})();
+reset();
+</script>
+</body>
+</html>

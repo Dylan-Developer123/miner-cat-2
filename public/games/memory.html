@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Memory Match — Arqade</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #12121c; color: #eee; display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 16px; }
+  a.exit-game { display: inline-flex; align-items: center; align-self: flex-start; background: #26264a; color: #eee; border: 1px solid #55557a; border-radius: 9px; padding: 8px 14px; font-size: 15px; font-weight: 700; line-height: 1; text-decoration: none; }
+  h1 { font-size: 26px; margin: 8px 0 4px; }
+  #score { font-size: 18px; margin-bottom: 10px; }
+  #board { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; width: min(440px, 94vw); }
+  .card { aspect-ratio: 1; border: 2px solid #5e35b1; border-radius: 12px; background: #2a2145; color: #fff; font-size: clamp(30px, 9vw, 44px); cursor: pointer; }
+  .card.open { background: #f5f0ff; border-color: #b39ddb; }
+  .card.done { background: #245c35; border-color: #81c784; cursor: default; }
+  #msg { margin-top: 12px; font-size: 16px; min-height: 22px; text-align: center; }
+  button.action { margin-top: 10px; background: #f5c542; color: #191920; border: none; font-weight: bold; padding: 10px 22px; border-radius: 9px; font-size: 16px; cursor: pointer; }
+  #acct { margin-top: 14px; font-size: 14px; opacity: .9; }
+  #lb { margin-top: 10px; font-size: 14px; text-align: left; min-width: 250px; }
+</style>
+</head>
+<body>
+<a class="exit-game" href="/">← All games</a>
+<h1>🧠 Memory Match</h1>
+<div id="score">Moves: 0 · Pairs: 0/8 · Time: 0s</div>
+<div id="board"></div>
+<div id="msg">Find all 8 matching pairs. Fewer moves and faster times score more.</div>
+<button class="action" id="restart">↻ New game</button>
+<div id="acct"></div>
+<div id="lb"></div>
+<script>
+const symbols = ['🐶','🦊','🐸','🦁','🐵','🐙','🦄','🐝'];
+let deck, first, lock, moves, pairs, startedAt, timer, finished;
+function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function elapsed() { return startedAt ? Math.floor((Date.now() - startedAt) / 1000) : 0; }
+function upd() { document.getElementById('score').textContent = `Moves: ${moves} · Pairs: ${pairs}/8 · Time: ${elapsed()}s`; }
+function reset() {
+  deck = shuffle([...symbols, ...symbols]); first = null; lock = false; moves = 0; pairs = 0; startedAt = null; finished = false;
+  clearInterval(timer); timer = null;
+  const board = document.getElementById('board'); board.innerHTML = '';
+  deck.forEach((symbol, i) => {
+    const b = document.createElement('button');
+    b.className = 'card'; b.textContent = '✦'; b.setAttribute('aria-label', 'Hidden card');
+    b.onclick = () => flip(b, symbol);
+    board.appendChild(b);
+  });
+  document.getElementById('msg').textContent = 'Find all 8 matching pairs. Fewer moves and faster times score more.';
+  upd();
+}
+function flip(card, symbol) {
+  if (lock || finished || card.classList.contains('open')) return;
+  if (!startedAt) { startedAt = Date.now(); timer = setInterval(upd, 500); }
+  card.classList.add('open'); card.textContent = symbol;
+  if (!first) { first = { card, symbol }; return; }
+  moves++; upd();
+  if (first.symbol === symbol) {
+    first.card.classList.add('done'); card.classList.add('done'); pairs++; first = null; upd();
+    if (pairs === 8) win();
+  } else {
+    lock = true; const old = first; first = null;
+    setTimeout(() => { old.card.classList.remove('open'); old.card.textContent = '✦'; card.classList.remove('open'); card.textContent = '✦'; lock = false; }, 650);
+  }
+}
+function win() {
+  finished = true; clearInterval(timer);
+  const score = Math.max(100, 1000 - Math.max(0, moves - 8) * 25 - elapsed() * 2);
+  document.getElementById('msg').textContent = `🎉 You matched them all! Final score: ${score}`;
+  submitScore(score);
+}
+document.getElementById('restart').onclick = reset;
+// --- Site account (the Miner Cat account works everywhere) ---
+let ME = null;
+const esc = s => String(s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+async function loadLb() {
+  try {
+    const d = await (await fetch('/api/scores/memory')).json();
+    document.getElementById('lb').innerHTML = '<b>🏆 Leaderboard</b>' + (d.scores.length ? d.scores.map((s, i) => `<br>${i + 1}. ${esc(s.displayName)} — ${s.score}`).join('') : '<br>No scores yet — be the first!');
+  } catch (e) {}
+}
+async function submitScore(s) {
+  if (!ME || !s) return;
+  try { await fetch('/api/scores', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ game: 'memory', score: s }) }); loadLb(); } catch (e) {}
+}
+(async () => {
+  try { const r = await fetch('/api/me'); if (r.ok) ME = (await r.json()).user; } catch (e) {}
+  document.getElementById('acct').innerHTML = ME ? `👤 Playing as <b>${esc(ME.displayName)}</b> — your best score saves to your account` : '👤 <a href="/miner-cat-2" style="color:#f5c542;">Sign in</a> to save scores to your account';
+  loadLb();
+})();
+reset();
+</script>
+</body>
+</html>

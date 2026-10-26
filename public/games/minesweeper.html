@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Minesweeper — Arqade</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #12121c; color: #eee; display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 16px; }
+  a.exit-game { display: inline-flex; align-items: center; align-self: flex-start; background: #26264a; color: #eee; border: 1px solid #55557a; border-radius: 9px; padding: 8px 14px; font-size: 15px; font-weight: 700; line-height: 1; text-decoration: none; }
+  h1 { font-size: 26px; margin: 8px 0 4px; }
+  #score { font-size: 18px; margin-bottom: 10px; text-align: center; }
+  #board { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; width: min(450px, 94vw); background: #303040; padding: 7px; border-radius: 12px; }
+  .cell { aspect-ratio: 1; border: 1px solid #66667f; border-radius: 5px; background: #484862; color: #fff; font-size: clamp(15px, 4.5vw, 22px); font-weight: 800; cursor: pointer; padding: 0; }
+  .cell.open { background: #d8d8e2; cursor: default; }
+  .cell.mine { background: #ef5350; }
+  .n1 { color: #1565c0; } .n2 { color: #2e7d32; } .n3 { color: #c62828; } .n4 { color: #4527a0; }
+  .n5 { color: #795548; } .n6 { color: #00838f; } .n7 { color: #222; } .n8 { color: #666; }
+  #msg { margin-top: 12px; font-size: 16px; min-height: 22px; text-align: center; }
+  .actions { display: flex; gap: 9px; flex-wrap: wrap; justify-content: center; }
+  button.action { margin-top: 10px; background: #f5c542; color: #191920; border: none; font-weight: bold; padding: 10px 18px; border-radius: 9px; font-size: 16px; cursor: pointer; }
+  button.action.off { background: #33334f; color: #eee; border: 1px solid #55557a; }
+  #acct { margin-top: 14px; font-size: 14px; opacity: .9; }
+  #lb { margin-top: 10px; font-size: 14px; text-align: left; min-width: 250px; }
+</style>
+</head>
+<body>
+<a class="exit-game" href="/">← All games</a>
+<h1>💣 Minesweeper</h1>
+<div id="score">Safe squares: 0/71 · Mines: 10</div>
+<div id="board"></div>
+<div id="msg">Your first tap is always safe. Find every safe square without hitting a mine.</div>
+<div class="actions">
+  <button class="action" id="restart">↻ New game</button>
+  <button class="action off" id="flagMode">🚩 Flag mode: Off</button>
+</div>
+<div id="acct"></div>
+<div id="lb"></div>
+<script>
+const SIZE = 9, MINES = 10, SAFE = SIZE * SIZE - MINES;
+let mines, openCells, flags, started, over, submitted, flagMode;
+function idx(r, c) { return r * SIZE + c; }
+function neighbors(i) {
+  const r = Math.floor(i / SIZE), c = i % SIZE, out = [];
+  for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+    if (!dr && !dc) continue;
+    const nr = r + dr, nc = c + dc;
+    if (nr >= 0 && nr < SIZE && nc >= 0 && nc < SIZE) out.push(idx(nr, nc));
+  }
+  return out;
+}
+function reset() {
+  mines = new Set(); openCells = new Set(); flags = new Set(); started = false; over = false; submitted = false; flagMode = false;
+  document.getElementById('flagMode').textContent = '🚩 Flag mode: Off';
+  document.getElementById('flagMode').classList.add('off');
+  document.getElementById('msg').textContent = 'Your first tap is always safe. Find every safe square without hitting a mine.';
+  draw(); upd();
+}
+function placeMines(safeStart) {
+  const blocked = new Set([safeStart, ...neighbors(safeStart)]);
+  while (mines.size < MINES) {
+    const i = Math.floor(Math.random() * SIZE * SIZE);
+    if (!blocked.has(i)) mines.add(i);
+  }
+}
+function count(i) { return neighbors(i).filter(n => mines.has(n)).length; }
+function draw() {
+  const board = document.getElementById('board'); board.innerHTML = '';
+  for (let i = 0; i < SIZE * SIZE; i++) {
+    const b = document.createElement('button');
+    b.className = 'cell'; b.setAttribute('aria-label', 'Minesweeper square');
+    if (openCells.has(i)) {
+      b.classList.add('open');
+      if (mines.has(i)) { b.classList.add('mine'); b.textContent = '💣'; }
+      else { const n = count(i); b.textContent = n || ''; if (n) b.classList.add('n' + n); }
+    } else if (flags.has(i)) b.textContent = '🚩';
+    b.onclick = () => tap(i);
+    b.oncontextmenu = e => { e.preventDefault(); toggleFlag(i); };
+    board.appendChild(b);
+  }
+}
+function upd() { const safeOpen = [...openCells].filter(i => !mines.has(i)).length; document.getElementById('score').textContent = `Safe squares: ${safeOpen}/${SAFE} · Mines: ${MINES} · Flags: ${flags.size}`; }
+function tap(i) {
+  if (over || openCells.has(i)) return;
+  if (flagMode) { toggleFlag(i); return; }
+  if (flags.has(i)) return;
+  if (!started) { placeMines(i); started = true; }
+  if (mines.has(i)) { openCells.add(i); end(false); draw(); upd(); return; }
+  reveal(i); draw(); upd();
+  if (openCells.size === SAFE) end(true);
+}
+function reveal(start) {
+  const stack = [start];
+  while (stack.length) {
+    const i = stack.pop();
+    if (openCells.has(i) || flags.has(i) || mines.has(i)) continue;
+    openCells.add(i);
+    if (count(i) === 0) stack.push(...neighbors(i));
+  }
+}
+function toggleFlag(i) {
+  if (over || openCells.has(i)) return;
+  flags.has(i) ? flags.delete(i) : flags.add(i);
+  draw(); upd();
+}
+function end(won) {
+  over = true;
+  const safeFound = [...openCells].filter(i => !mines.has(i)).length;
+  if (won) mines.forEach(i => flags.add(i));
+  else mines.forEach(i => openCells.add(i));
+  const finalScore = safeFound + (won ? 100 : 0);
+  document.getElementById('msg').textContent = won ? `🏆 You cleared the board! Final score: ${finalScore}` : `💥 Boom! You found ${safeFound} safe squares. Score: ${finalScore}`;
+  if (!submitted) { submitted = true; submitScore(finalScore); }
+  draw(); upd();
+}
+document.getElementById('restart').onclick = reset;
+document.getElementById('flagMode').onclick = () => {
+  flagMode = !flagMode;
+  document.getElementById('flagMode').textContent = `🚩 Flag mode: ${flagMode ? 'On' : 'Off'}`;
+  document.getElementById('flagMode').classList.toggle('off', !flagMode);
+};
+// --- Site account (the Miner Cat account works everywhere) ---
+let ME = null;
+const esc = s => String(s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+async function loadLb() {
+  try {
+    const d = await (await fetch('/api/scores/minesweeper')).json();
+    document.getElementById('lb').innerHTML = '<b>🏆 Leaderboard</b>' + (d.scores.length ? d.scores.map((s, i) => `<br>${i + 1}. ${esc(s.displayName)} — ${s.score}`).join('') : '<br>No scores yet — be the first!');
+  } catch (e) {}
+}
+async function submitScore(s) {
+  if (!ME || !s) return;
+  try { await fetch('/api/scores', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ game: 'minesweeper', score: s }) }); loadLb(); } catch (e) {}
+}
+(async () => {
+  try { const r = await fetch('/api/me'); if (r.ok) ME = (await r.json()).user; } catch (e) {}
+  document.getElementById('acct').innerHTML = ME ? `👤 Playing as <b>${esc(ME.displayName)}</b> — your best score saves to your account` : '👤 <a href="/miner-cat-2" style="color:#f5c542;">Sign in</a> to save scores to your account';
+  loadLb();
+})();
+reset();
+</script>
+</body>
+</html>

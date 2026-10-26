@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Pong — Arqade</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #12121c; color: #eee; display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 16px; }
+  a.exit-game { display: inline-flex; align-items: center; align-self: flex-start; background: #26264a; color: #eee; border: 1px solid #55557a; border-radius: 9px; padding: 8px 14px; font-size: 15px; font-weight: 700; line-height: 1; text-decoration: none; }
+  h1 { font-size: 26px; margin: 8px 0 4px; }
+  #score { font-size: 18px; margin-bottom: 10px; text-align: center; }
+  canvas { background: #0b1020; border: 2px solid #4fc3f7; border-radius: 10px; touch-action: none; max-width: 94vw; height: auto; }
+  #msg { margin-top: 12px; font-size: 16px; min-height: 22px; text-align: center; }
+  button.action { margin-top: 10px; background: #f5c542; color: #191920; border: none; font-weight: bold; padding: 10px 22px; border-radius: 9px; font-size: 16px; cursor: pointer; }
+  #acct { margin-top: 14px; font-size: 14px; opacity: .9; }
+  #lb { margin-top: 10px; font-size: 14px; text-align: left; min-width: 250px; }
+</style>
+</head>
+<body>
+<a class="exit-game" href="/">← All games</a>
+<h1>🏓 Pong</h1>
+<div id="score">You 0 · CPU 0 · Score 0</div>
+<canvas id="c" width="520" height="360"></canvas>
+<div id="msg">Move with your mouse, finger, or ↑ ↓ keys. First to 7 wins.</div>
+<button class="action" id="restart">▶ Start match</button>
+<div id="acct"></div>
+<div id="lb"></div>
+<script>
+const cvs = document.getElementById('c'), ctx = cvs.getContext('2d');
+const W = cvs.width, H = cvs.height;
+let player, cpu, ball, playerScore, cpuScore, score, state, keys, submitted;
+function resetBall(towardCpu = Math.random() < 0.5) {
+  const angle = (Math.random() * 0.7 - 0.35);
+  const speed = 4.2;
+  ball = { x: W / 2, y: H / 2, vx: (towardCpu ? 1 : -1) * speed * Math.cos(angle), vy: speed * Math.sin(angle) };
+}
+function reset() {
+  player = { y: H / 2 - 38 }; cpu = { y: H / 2 - 38 };
+  playerScore = 0; cpuScore = 0; score = 0; state = 'wait'; keys = {}; submitted = false;
+  resetBall(); upd();
+  document.getElementById('msg').textContent = 'Move with your mouse, finger, or ↑ ↓ keys. First to 7 wins.';
+  document.getElementById('restart').textContent = '▶ Start match';
+}
+function upd() { document.getElementById('score').textContent = `You ${playerScore} · CPU ${cpuScore} · Score ${score}`; }
+function start() { if (state === 'over') reset(); state = 'play'; document.getElementById('restart').textContent = '↻ Restart match'; }
+function finish() {
+  state = 'over';
+  const won = playerScore > cpuScore;
+  score += won ? 50 : 0;
+  upd();
+  document.getElementById('msg').textContent = won ? `🏆 You win ${playerScore}–${cpuScore}! Final score: ${score}` : `CPU wins ${cpuScore}–${playerScore}. Your score: ${score}`;
+  document.getElementById('restart').textContent = '▶ Play again';
+  if (!submitted) { submitted = true; submitScore(score); }
+}
+function point(playerWon) {
+  if (playerWon) { playerScore++; score += 25; } else cpuScore++;
+  upd();
+  if (playerScore >= 7 || cpuScore >= 7) finish(); else resetBall(!playerWon);
+}
+function step() {
+  draw();
+  if (state === 'play') {
+    if (keys.up) player.y -= 6;
+    if (keys.down) player.y += 6;
+    player.y = Math.max(0, Math.min(H - 76, player.y));
+    const cpuCenter = cpu.y + 38, target = ball.vx > 0 ? ball.y - 38 : H / 2 - 38;
+    const diff = target - cpu.y;
+    cpu.y += Math.max(-4.1, Math.min(4.1, diff * 0.09));
+    cpu.y = Math.max(0, Math.min(H - 76, cpu.y));
+    ball.x += ball.vx; ball.y += ball.vy;
+    if (ball.y <= 7 || ball.y >= H - 7) ball.vy *= -1;
+    if (ball.x - 7 <= 24 && ball.vx < 0 && ball.y >= player.y && ball.y <= player.y + 76) {
+      const rel = (ball.y - (player.y + 38)) / 38;
+      const speed = Math.min(8.5, Math.hypot(ball.vx, ball.vy) + 0.25);
+      const angle = rel * 0.75;
+      ball.vx = speed * Math.cos(angle); ball.vy = speed * Math.sin(angle); ball.x = 32; score++; upd();
+    }
+    if (ball.x + 7 >= W - 24 && ball.vx > 0 && ball.y >= cpu.y && ball.y <= cpu.y + 76) {
+      const rel = (ball.y - (cpu.y + 38)) / 38;
+      const speed = Math.min(8.5, Math.hypot(ball.vx, ball.vy) + 0.25);
+      const angle = Math.PI - rel * 0.75;
+      ball.vx = speed * Math.cos(angle); ball.vy = speed * Math.sin(angle); ball.x = W - 32;
+    }
+    if (ball.x < -12) point(false);
+    if (ball.x > W + 12) point(true);
+  }
+  requestAnimationFrame(step);
+}
+function draw() {
+  ctx.fillStyle = '#0b1020'; ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.setLineDash([8, 10]); ctx.beginPath(); ctx.moveTo(W / 2, 0); ctx.lineTo(W / 2, H); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = '#4fc3f7'; ctx.fillRect(14, player.y, 10, 76);
+  ctx.fillStyle = '#f48fb1'; ctx.fillRect(W - 24, cpu.y, 10, 76);
+  ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(ball.x, ball.y, 7, 0, 7); ctx.fill();
+  if (state === 'wait') { ctx.font = 'bold 24px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('Click Start match', W / 2, H / 2 - 18); }
+}
+function pointerY(e) {
+  const r = cvs.getBoundingClientRect();
+  return (e.clientY - r.top) * (H / r.height) - 38;
+}
+cvs.addEventListener('pointermove', e => { player.y = Math.max(0, Math.min(H - 76, pointerY(e))); });
+cvs.addEventListener('pointerdown', e => { player.y = Math.max(0, Math.min(H - 76, pointerY(e))); if (state === 'wait') start(); });
+addEventListener('keydown', e => {
+  if (e.key === 'ArrowUp') { keys.up = true; e.preventDefault(); }
+  if (e.key === 'ArrowDown') { keys.down = true; e.preventDefault(); }
+  if (e.key === ' ' && state !== 'play') { e.preventDefault(); start(); }
+});
+addEventListener('keyup', e => { if (e.key === 'ArrowUp') keys.up = false; if (e.key === 'ArrowDown') keys.down = false; });
+document.getElementById('restart').onclick = () => { if (state === 'play') reset(); start(); };
+// --- Site account (the Miner Cat account works everywhere) ---
+let ME = null;
+const esc = s => String(s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+async function loadLb() {
+  try {
+    const d = await (await fetch('/api/scores/pong')).json();
+    document.getElementById('lb').innerHTML = '<b>🏆 Leaderboard</b>' + (d.scores.length ? d.scores.map((s, i) => `<br>${i + 1}. ${esc(s.displayName)} — ${s.score}`).join('') : '<br>No scores yet — be the first!');
+  } catch (e) {}
+}
+async function submitScore(s) {
+  if (!ME || !s) return;
+  try { await fetch('/api/scores', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ game: 'pong', score: s }) }); loadLb(); } catch (e) {}
+}
+(async () => {
+  try { const r = await fetch('/api/me'); if (r.ok) ME = (await r.json()).user; } catch (e) {}
+  document.getElementById('acct').innerHTML = ME ? `👤 Playing as <b>${esc(ME.displayName)}</b> — your best score saves to your account` : '👤 <a href="/miner-cat-2" style="color:#f5c542;">Sign in</a> to save scores to your account';
+  loadLb();
+})();
+reset(); requestAnimationFrame(step);
+</script>
+</body>
+</html>

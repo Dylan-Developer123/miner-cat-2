@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Coin Clicker — Arqade</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #12121c; color: #eee; display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 16px; }
+  a.exit-game { display: inline-flex; align-items: center; align-self: flex-start; background: #26264a; color: #eee; border: 1px solid #55557a; border-radius: 9px; padding: 8px 14px; font-size: 15px; font-weight: 700; line-height: 1; text-decoration: none; }
+  h1 { font-size: 26px; margin: 8px 0 4px; }
+  #score { font-size: 19px; margin-bottom: 10px; }
+  #arena { position: relative; width: min(480px, 94vw); height: 340px; overflow: hidden; border: 2px solid #8a6d1d; border-radius: 14px; background: radial-gradient(circle at 50% 35%, #4a3b12, #241d08 72%); }
+  #coin { position: absolute; width: 88px; height: 88px; border: 4px solid #b8860b; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff59d, #f5c542 58%, #c79400); color: #6d5200; font-size: 44px; cursor: pointer; box-shadow: 0 8px 22px rgba(0,0,0,.45); touch-action: manipulation; }
+  #coin:active { transform: scale(.93); }
+  #msg { margin-top: 12px; font-size: 16px; min-height: 22px; text-align: center; }
+  button.action { margin-top: 10px; background: #f5c542; color: #191920; border: none; font-weight: bold; padding: 10px 22px; border-radius: 9px; font-size: 16px; cursor: pointer; }
+  #acct { margin-top: 14px; font-size: 14px; opacity: .9; }
+  #lb { margin-top: 10px; font-size: 14px; text-align: left; min-width: 250px; }
+</style>
+</head>
+<body>
+<a class="exit-game" href="/">← All games</a>
+<h1>🪙 Coin Clicker</h1>
+<div id="score">Coins: 0 · Time: 30.0</div>
+<div id="arena"><button id="coin" aria-label="Click the coin">🪙</button></div>
+<div id="msg">Click the coin as many times as you can in 30 seconds. It jumps after every click!</div>
+<button class="action" id="restart">▶ Start</button>
+<div id="acct"></div>
+<div id="lb"></div>
+<script>
+const arena = document.getElementById('arena'), coin = document.getElementById('coin');
+let score, playing, endsAt, timer, size;
+function place() {
+  const maxX = Math.max(0, arena.clientWidth - size), maxY = Math.max(0, arena.clientHeight - size);
+  coin.style.left = Math.random() * maxX + 'px'; coin.style.top = Math.random() * maxY + 'px';
+  coin.style.width = size + 'px'; coin.style.height = size + 'px'; coin.style.fontSize = Math.round(size * 0.5) + 'px';
+}
+function upd() {
+  const left = playing ? Math.max(0, (endsAt - Date.now()) / 1000) : 30;
+  document.getElementById('score').textContent = `Coins: ${score} · Time: ${left.toFixed(1)}`;
+}
+function start() {
+  score = 0; size = 88; playing = true; endsAt = Date.now() + 30000;
+  coin.disabled = false; document.getElementById('restart').textContent = '↻ Restart';
+  document.getElementById('msg').textContent = 'Go! The coin gets smaller as your score climbs.';
+  place(); upd(); clearInterval(timer); timer = setInterval(() => { upd(); if (Date.now() >= endsAt) finish(); }, 100);
+}
+function finish() {
+  playing = false; clearInterval(timer); coin.disabled = true; upd();
+  document.getElementById('score').textContent = `Coins: ${score} · Time: 0.0`;
+  document.getElementById('msg').textContent = `⏰ Time! You clicked ${score} coins.`;
+  submitScore(score);
+}
+coin.onclick = () => {
+  if (!playing) return;
+  score++; size = Math.max(56, 88 - Math.floor(score / 6) * 4); place(); upd();
+};
+document.getElementById('restart').onclick = start;
+addEventListener('resize', () => { if (playing) place(); });
+// --- Site account (the Miner Cat account works everywhere) ---
+let ME = null;
+const esc = s => String(s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+async function loadLb() {
+  try {
+    const d = await (await fetch('/api/scores/clicker')).json();
+    document.getElementById('lb').innerHTML = '<b>🏆 Leaderboard</b>' + (d.scores.length ? d.scores.map((s, i) => `<br>${i + 1}. ${esc(s.displayName)} — ${s.score}`).join('') : '<br>No scores yet — be the first!');
+  } catch (e) {}
+}
+async function submitScore(s) {
+  if (!ME || !s) return;
+  try { await fetch('/api/scores', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ game: 'clicker', score: s }) }); loadLb(); } catch (e) {}
+}
+(async () => {
+  try { const r = await fetch('/api/me'); if (r.ok) ME = (await r.json()).user; } catch (e) {}
+  document.getElementById('acct').innerHTML = ME ? `👤 Playing as <b>${esc(ME.displayName)}</b> — your best score saves to your account` : '👤 <a href="/miner-cat-2" style="color:#f5c542;">Sign in</a> to save scores to your account';
+  loadLb();
+})();
+score = 0; size = 88; playing = false; coin.disabled = true; place(); upd();
+</script>
+</body>
+</html>
