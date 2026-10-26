@@ -92,7 +92,7 @@ let smashables = [];           // {mesh,x,z,alive}
 let state = 'wait';            // wait | play | over
 let mode = 'drive';            // drive | foot
 let keys = {}, clock, scene, camera, renderer;
-let cars = [], peds = [], cops = [], trafficTimer = 0, pedTimer = 0;
+let cars = [], peds = [], cops = [], officers = [], trafficTimer = 0, pedTimer = 0, officerSpawnT = 0;
 let playerCar = null, char = null, charVel = { x: 0, z: 0 }, charAngle = 0, charPhase = 0, charBlend = 0;
 let cash = 0, heat = 0, wanted = 0, health = 100, bustTimer = 0, seenByCop = false, evadeShown = false;
 let elapsed = 0, shake = 0, flashT = 0, submitted = false, heli = null, heliSpot = { x: 0, z: 0 };
@@ -498,7 +498,7 @@ function addCar(color, x, z, angle, kind, opts = {}) {
   const car = {
     id: carId++, mesh, kind, // 'traffic' | 'cop' | 'parked'
     angle, vx: 0, vz: 0, steerVis: 0,
-    speed: 0, targetSpeed: 0, spin: 0, dead: false, steerCur: 0, pedalT: 0, pedalB: 0, gear: 1, shiftT: 0, prevVF: 0, longA: 0, wheelspin: false, skid: false, power: opts.power || 1,
+    speed: 0, targetSpeed: 0, spin: 0, dead: false, steerCur: 0, officerOut: false, pedalT: 0, pedalB: 0, gear: 1, shiftT: 0, prevVF: 0, longA: 0, wheelspin: false, skid: false, power: opts.power || 1,
     ai: { axis: opts.axis || 'z', dir: opts.dir || -1, lane: opts.lane || 0, turnT: 2 + Math.random() * 5, panic: 0, stuck: 0 },
     nearMissed: false, wrecked: false
   };
@@ -802,6 +802,7 @@ function aheadEntity(car, dist) {
   for (const o of cars) if (o !== car) test(o.mesh.position.x, o.mesh.position.z);
   if (mode === 'foot' && char) test(char.position.x, char.position.z);
   else if (playerCar && car !== playerCar) test(playerCar.mesh.position.x, playerCar.mesh.position.z);
+  for (const o of officers) test(o.x, o.z);
   return best ? bestD : null;
 }
 function trafficInput(car, dt) {
@@ -840,6 +841,7 @@ function trafficInput(car, dt) {
   return input;
 }
 function copInput(car, dt) {
+  if (car.officerOut) return { steer: 0, throttle: 0, brake: false, handbrake: true };
   const ai = car.ai, p = car.mesh.position;
   const target = mode === 'drive' && playerCar ? playerCar.mesh.position : char.position;
   const tp = { x: target.x, z: target.z };
@@ -974,6 +976,93 @@ function updatePeds(dt) {
     ped.mesh.rotation.y = ped.angle;
   }
 }
+// ============================== FOOT POLICE ==============================
+function collidePoint(pos, r) {
+  for (const b of colliders) {
+    const nx = Math.max(b.x1, Math.min(pos.x, b.x2)), nz = Math.max(b.z1, Math.min(pos.z, b.z2));
+    const dx = pos.x - nx, dz = pos.z - nz, d2 = dx * dx + dz * dz;
+    if (d2 < r * r) {
+      const d = Math.sqrt(d2) || 0.01;
+      pos.x = nx + dx / d * r; pos.z = nz + dz / d * r;
+    }
+  }
+}
+function spawnOfficer(car) {
+  const p = car.mesh.position;
+  const mesh = makePedMesh(0x1e3a8f, 0x111827, { hat: true, skin: 0xe0ac69 });
+  const R = { x: Math.cos(car.angle), z: -Math.sin(car.angle) };
+  const off = { mesh, x: p.x + R.x * 2.3, z: p.z + R.z * 2.3, angle: car.angle, phase: Math.random() * 6, state: 'chase', car, timer: 0, dead: false, grabbing: false };
+  mesh.position.set(off.x, 0, off.z);
+  mesh.rotation.y = car.angle;
+  scene.add(mesh);
+  officers.push(off);
+  car.officerOut = true;
+  flashSmall('🚔 Officer on foot!');
+}
+function updateOfficers(dt) {
+  const targetPos = mode === 'drive' && playerCar ? playerCar.mesh.position : char.position;
+  for (const o of officers) {
+    o.timer -= dt;
+    if (o.state === 'down') {
+      if (o.timer <= 0) { o.state = 'chase'; o.mesh.rotation.x = 0; o.mesh.position.y = 0; }
+      continue;
+    }
+    const carGone = !cars.includes(o.car) || o.car.kind !== 'cop';
+    const playerFast = mode === 'drive' && Math.abs(playerCar.speed) > 12;
+    const dPlayer = Math.hypot(o.x - targetPos.x, o.z - targetPos.z);
+    if (o.state === 'return' && !carGone && !playerFast && dPlayer < 20) o.state = 'chase';
+    if (carGone || playerFast) o.state = 'return';
+    let tx, tz, spd = 7.4;
+    if (o.state === 'return') {
+      tx = o.car.mesh.position.x; tz = o.car.mesh.position.z;
+      const dCar = Math.hypot(o.x - tx, o.z - tz);
+      if (!carGone && dCar < 2.3) { scene.remove(o.mesh); o.dead = true; o.car.officerOut = false; continue; }
+      if (carGone && dPlayer > 45) { scene.remove(o.mesh); o.dead = true; continue; }
+    } else {
+      tx = targetPos.x; tz = targetPos.z;
+      if (dPlayer < 3.2) spd = 8.8; // final lunge
+      if (dPlayer < 1.15) spd = 0;  // on top of you — grabbing
+    }
+    o.grabbing = o.state === 'chase' && mode === 'foot' && dPlayer < 1.7;
+    const dx = tx - o.x, dz = tz - o.z, dl = Math.hypot(dx, dz);
+    if (dl > 0.05 && spd > 0) {
+      o.x += dx / dl * spd * dt;
+      o.z += dz / dl * spd * dt;
+      o.angle = Math.atan2(-dx / dl, -dz / dl);
+      o.phase += dt * spd * 1.85;
+    }
+    const tmp = { x: o.x, z: o.z };
+    collidePoint(tmp, 0.55);
+    o.x = tmp.x; o.z = tmp.z;
+    animatePerson(o.mesh, o.phase, o.grabbing ? 0.25 : 1.45);
+    if (o.grabbing) { o.mesh.userData.armL.rotation.x = -1.3; o.mesh.userData.armR.rotation.x = -1.3; }
+    // run over?
+    for (const c of cars) {
+      if (Math.abs(c.speed) > 4 && Math.hypot(c.mesh.position.x - o.x, c.mesh.position.z - o.z) < 1.2) {
+        o.state = 'down'; o.timer = 4; o.mesh.rotation.x = Math.PI / 2; o.mesh.position.y = 0.25;
+        splayArms(o.mesh);
+        if (c === playerCar && mode === 'drive') addHeat(55, '🚔 OFFICER DOWN!');
+        break;
+      }
+    }
+    o.mesh.position.x = o.x; o.mesh.position.z = o.z;
+    o.mesh.rotation.y = o.angle;
+  }
+  officers = officers.filter(o => !o.dead);
+  // decide who gets out
+  officerSpawnT -= dt;
+  if (officerSpawnT <= 0) {
+    officerSpawnT = 0.5;
+    if (wanted > 0 && officers.length < 4) {
+      for (const c of cars) {
+        if (c.kind !== 'cop' || c.officerOut) continue;
+        const d = Math.hypot(c.mesh.position.x - targetPos.x, c.mesh.position.z - targetPos.z);
+        const should = mode === 'foot' ? (d < 17 && Math.abs(c.speed) < 9) : (Math.abs(playerCar.speed) < 3 && d < 13);
+        if (should) { spawnOfficer(c); break; }
+      }
+    }
+  }
+}
 // ============================== CHARACTER MODE ==============================
 function exitCar() {
   if (mode !== 'drive' || !playerCar) return;
@@ -1078,8 +1167,9 @@ function gameOver(kind) {
 function reset() {
   for (const c of cars) scene.remove(c.mesh);
   for (const p of peds) scene.remove(p.mesh);
+  for (const o of officers) scene.remove(o.mesh);
   if (heli) { scene.remove(heli); scene.remove(heli.userData.spotMesh); heli = null; }
-  cars = []; peds = []; cops = [];
+  cars = []; peds = []; cops = []; officers = [];
   cash = 0; heat = 0; wanted = 0; peakWanted = 0; health = 100; bustTimer = 0; elapsed = 0; submitted = false;
   topSpeed = 0; driftTime = 0; trafficTimer = 0; pedTimer = 0; copSpawnT = 0; seenByCop = false;
   mode = 'drive';
@@ -1238,6 +1328,7 @@ function animate() {
     }
     collideCars(dt);
     updatePeds(dt);
+    updateOfficers(dt);
     updateSmoke(dt);
     // ---------- wanted / evade ----------
     const activeCops = cars.filter(c => c.kind === 'cop');
@@ -1271,13 +1362,15 @@ function animate() {
     }
     // ---------- bust checks ----------
     if (wanted > 0) {
+      const officerNear = officers.some(o => o.state === 'chase' && Math.hypot(o.x - anchor.x, o.z - anchor.z) < 2.6);
       if (mode === 'drive' && playerCar) {
-        const pinned = Math.abs(playerCar.speed) < 2.5 && activeCops.some(c => Math.hypot(c.mesh.position.x - anchor.x, c.mesh.position.z - anchor.z) < 7);
-        bustTimer = pinned ? bustTimer + dt : Math.max(0, bustTimer - dt * 2);
+        const pinned = Math.abs(playerCar.speed) < 2.5 && (officerNear || activeCops.some(c => Math.hypot(c.mesh.position.x - anchor.x, c.mesh.position.z - anchor.z) < 7));
+        bustTimer = pinned ? bustTimer + dt * (officerNear ? 1.35 : 1) : Math.max(0, bustTimer - dt * 2);
         if (bustTimer >= 2) { gameOver('busted'); }
       } else if (mode === 'foot') {
-        const grabbed = activeCops.some(c => Math.hypot(c.mesh.position.x - anchor.x, c.mesh.position.z - anchor.z) < 5.5);
-        bustTimer = grabbed ? bustTimer + dt : Math.max(0, bustTimer - dt * 2);
+        const officerGrab = officers.some(o => o.grabbing);
+        const grabbed = officerGrab || activeCops.some(c => Math.hypot(c.mesh.position.x - anchor.x, c.mesh.position.z - anchor.z) < 5.5);
+        bustTimer = grabbed ? bustTimer + dt * (officerGrab ? 1.5 : 1) : Math.max(0, bustTimer - dt * 2);
         if (bustTimer >= 1.6) { gameOver('busted'); }
       }
     } else bustTimer = Math.max(0, bustTimer - dt * 2);
