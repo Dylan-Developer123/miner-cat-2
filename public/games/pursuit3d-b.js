@@ -225,6 +225,7 @@ $('tagBtn').onclick = () => {
 };
 tagUi();
 $('mpBtn').onclick = mpConnect;
+if (typeof pickMode === 'function') pickMode(gameMode);
 
 // ============================== FULLSCREEN MAP ==============================
 let bigMapOn = false;
@@ -408,7 +409,7 @@ hold('f-left', 'left');
 hold('f-right', 'right');
 hold('f-run', 'run');
 tap('f-enter', enterCar);
-$('restart').onclick = async () => { if (!await bootGame()) return; if (state === 'play') reset(); start(); };
+$('restart').onclick = async () => { if (!await bootGame()) return; if (state === 'play') reset(); start(); if ((gameMode === 'multiplayer') !== !!mpWs) mpConnect(); };
 // --- Site account (the Miner Cat account works everywhere) ---
 let ME = null;
 const esc = s => String(s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
