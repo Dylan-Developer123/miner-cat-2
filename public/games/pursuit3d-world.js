@@ -23,16 +23,45 @@ function parkedCar(x, z, ang) {
   const along = Math.abs(Math.sin(ang)) > 0.5;
   colliders.push({ x1: x - (along ? 2.4 : 1.1), z1: z - (along ? 1.1 : 2.4), x2: x + (along ? 2.4 : 1.1), z2: z + (along ? 1.1 : 2.4) });
 }
-function makeMall(cx, cz) { // two blocks wide: big flat store + parking lot in front
+function mallFrontTexture() { // stone band over a glass storefront, mall-style
+  const c = document.createElement('canvas'); c.width = 1024; c.height = 256;
+  const x = c.getContext('2d');
+  x.fillStyle = '#b8ab98'; x.fillRect(0, 0, 1024, 110);
+  x.fillStyle = '#a2937d'; for (let i = 0; i < 8; i++) x.fillRect(i * 128 + 62, 14, 5, 84);
+  x.fillStyle = '#18222e'; x.fillRect(0, 110, 1024, 146);
+  const grd = x.createLinearGradient(0, 110, 0, 256);
+  grd.addColorStop(0, 'rgba(160,200,235,.35)'); grd.addColorStop(0.5, 'rgba(120,160,200,.08)'); grd.addColorStop(1, 'rgba(160,200,235,.22)');
+  x.fillStyle = grd; x.fillRect(0, 110, 1024, 146);
+  x.fillStyle = '#39424e'; for (let i = 0; i <= 16; i++) x.fillRect(i * 64 - 2, 110, 4, 146);
+  x.fillStyle = '#0b0f14'; x.fillRect(452, 128, 120, 128);
+  x.fillStyle = '#7dd3fc'; x.fillRect(458, 134, 52, 122); x.fillRect(514, 134, 52, 122);
+  x.fillStyle = '#e8edf2'; x.fillRect(508, 134, 4, 122);
+  const t = new THREE.CanvasTexture(c); t.anisotropy = 8; return t;
+}
+function makeMall(cx, cz) { // two blocks wide: realistic storefront, entrance, roof gear, dressed-up lot
   const ux = cx + PITCH / 2, uz = cz;
-  const tex = FACES[Math.floor(Math.random() * FACES.length)];
-  const mat = new THREE.MeshStandardMaterial({ map: tex.map, emissiveMap: tex.glow, emissive: 0xffc37a, emissiveIntensity: 0.9, roughness: 0.85 });
+  const side = FACES[5]; // brick for the side walls
+  const sideMat = new THREE.MeshStandardMaterial({ map: side.map, emissiveMap: side.glow, emissive: 0xffc37a, emissiveIntensity: 0.55, roughness: 0.9 });
+  const frontMat = new THREE.MeshStandardMaterial({ map: mallFrontTexture(), roughness: 0.35, metalness: 0.25 });
   const roofMat = new THREE.MeshStandardMaterial({ color: 0x23262d, roughness: 0.95 });
-  const b = new THREE.Mesh(new THREE.BoxGeometry(100, 10, 30), [mat, mat, roofMat, roofMat, mat, mat]);
+  const backMat = new THREE.MeshStandardMaterial({ color: 0x8d8271, roughness: 0.95 });
+  const b = new THREE.Mesh(new THREE.BoxGeometry(100, 10, 30), [sideMat, sideMat, roofMat, roofMat, frontMat, backMat]);
   b.position.set(ux, 5, uz - 12); b.castShadow = true; b.receiveShadow = true; scene.add(b);
   colliders.push({ x1: ux - 50, z1: uz - 27, x2: ux + 50, z2: uz + 3 });
-  const sign = new THREE.Mesh(new THREE.PlaneGeometry(20, 5), new THREE.MeshBasicMaterial({ map: makeSignTexture('ARQADE MALL', '#4dd8ff') }));
-  sign.position.set(ux, 8, uz + 3.2); scene.add(sign);
+  const cap = new THREE.Mesh(new THREE.BoxGeometry(102, 1.1, 32), new THREE.MeshStandardMaterial({ color: 0x3a3f47, roughness: 0.8 }));
+  cap.position.set(ux, 10.4, uz - 12); cap.castShadow = true; scene.add(cap);
+  const band = new THREE.Mesh(new THREE.BoxGeometry(34, 4.6, 0.8), new THREE.MeshStandardMaterial({ color: 0x14202e, roughness: 0.6 }));
+  band.position.set(ux, 8.2, uz + 3.3); scene.add(band);
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(30, 4), new THREE.MeshBasicMaterial({ map: makeSignTexture('ARQADE MALL', '#4dd8ff') }));
+  sign.position.set(ux, 8.2, uz + 3.75); scene.add(sign);
+  const canopy = new THREE.Mesh(new THREE.BoxGeometry(18, 0.35, 6), new THREE.MeshStandardMaterial({ color: 0x2b3442, roughness: 0.6, metalness: 0.4 }));
+  canopy.position.set(ux, 3.6, uz + 5.5); canopy.castShadow = true; scene.add(canopy);
+  const colMat = new THREE.MeshStandardMaterial({ color: 0x9aa3ad, roughness: 0.4, metalness: 0.7 });
+  for (const sx of [-8, 8]) { const col = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 3.6, 10), colMat); col.position.set(ux + sx, 1.8, uz + 7.8); scene.add(col); }
+  const acMat = new THREE.MeshStandardMaterial({ color: 0x7d8590, roughness: 0.7, metalness: 0.5 });
+  for (const [ax, az, aw] of [[-30, -16, 7], [5, -20, 9], [32, -10, 6]]) { const ac = new THREE.Mesh(new THREE.BoxGeometry(aw, 1.6, 5), acMat); ac.position.set(ux + ax, 11.3, uz + az); ac.castShadow = true; scene.add(ac); }
+  const sky = new THREE.Mesh(new THREE.BoxGeometry(24, 0.5, 6), new THREE.MeshStandardMaterial({ color: 0x9fc6e8, roughness: 0.15, metalness: 0.4 }));
+  sky.position.set(ux - 2, 11.1, uz - 12); scene.add(sky);
   const lot = new THREE.Mesh(new THREE.PlaneGeometry(120, 24), new THREE.MeshStandardMaterial({ color: 0x26282c, roughness: 1 }));
   lot.rotation.x = -Math.PI / 2; lot.position.set(ux, 0.03, uz + 14); lot.receiveShadow = true; scene.add(lot);
   const stripeMat = new THREE.MeshBasicMaterial({ color: 0xd8d8d8 });
@@ -40,7 +69,19 @@ function makeMall(cx, cz) { // two blocks wide: big flat store + parking lot in 
     const st = new THREE.Mesh(new THREE.PlaneGeometry(0.35, 9), stripeMat);
     st.rotation.x = -Math.PI / 2; st.position.set(ux - 52 + i * 13, 0.05, uz + 10); scene.add(st);
   }
-  for (let i = 0; i < 4; i++) parkedCar(ux - 45 + i * 26 + Math.random() * 6, uz + 15, Math.PI / 2);
+  const planterMat = new THREE.MeshStandardMaterial({ color: 0x6b7280, roughness: 0.9 });
+  const bushMat = new THREE.MeshStandardMaterial({ color: 0x2e7d32, roughness: 1 });
+  for (const sx of [-13.5, 13.5]) {
+    const pl = new THREE.Mesh(new THREE.BoxGeometry(4.5, 0.7, 1.3), planterMat); pl.position.set(ux + sx, 0.35, uz + 4.6); scene.add(pl);
+    const bush = new THREE.Mesh(new THREE.SphereGeometry(0.85, 8, 6), bushMat); bush.position.set(ux + sx, 1.0, uz + 4.6); bush.castShadow = true; scene.add(bush);
+  }
+  const lampMat = new THREE.MeshStandardMaterial({ color: 0x2f3540, roughness: 0.6, metalness: 0.6 });
+  const lampHead = new THREE.MeshStandardMaterial({ color: 0x444444, emissive: 0xffe6a3, emissiveIntensity: 1.6 });
+  for (const lx of [-42, 0, 42]) {
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 5.4, 8), lampMat); pole.position.set(ux + lx, 2.7, uz + 21); scene.add(pole);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.18, 0.5), lampHead); head.position.set(ux + lx, 5.45, uz + 21); scene.add(head);
+  }
+  for (let i = 0; i < 5; i++) parkedCar(ux - 48 + i * 24 + Math.random() * 5, uz + 15, Math.PI / 2);
 }
 function makeSchool(cx, cz, name) { // two blocks wide: twin halls + a sports field
   const ux = cx + PITCH / 2, uz = cz;
