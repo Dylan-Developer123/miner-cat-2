@@ -95,7 +95,7 @@ let state = 'wait';            // wait | play | over
 let mode = 'drive';            // drive | foot
 let keys = {}, clock, scene, camera, renderer;
 let cars = [], peds = [], cops = [], officers = [], trafficTimer = 0, pedTimer = 0, officerSpawnT = 0;
-let playerCar = null, char = null, charVel = { x: 0, z: 0 }, charAngle = 0, charPhase = 0, charBlend = 0;
+let playerCar = null, char = null, charVel = { x: 0, z: 0 }, charAngle = 0, charPhase = 0, charBlend = 0, charGroundY = 0;
 let cash = 0, heat = 0, wanted = 0, health = 100, bustTimer = 0, seenByCop = false, evadeShown = false;
 let elapsed = 0, shake = 0, flashT = 0, submitted = false, heli = null, heliSpot = { x: 0, z: 0 };
 let smokePool = [], driftTime = 0, topSpeed = 0, sunLight = null, clouds = [], headlight = null, underLight = null, ceilMesh = null, groundMesh = null, terrMesh = null;
@@ -252,9 +252,11 @@ function hillHeight(x, z) {
   }
   return h * Math.min(1, Math.max(0, (m - (CITY - 30)) / 60));
 }
-function groundHeightAt(x, z) {
+function groundHeightAt(x, z, refY) {
   const gh = garageHeight(x, z);
   if (gh !== null) return gh;
+  const ph = parkingHeight(x, z, refY || 0);
+  if (ph !== null) return ph;
   let gy = Math.max(hillHeight(x, z), cityHillHeight(x, z));
   for (const r of RAMPS) {
     const dx = x - r.x, dz = z - r.z;
@@ -266,12 +268,12 @@ function groundHeightAt(x, z) {
   }
   return gy;
 }
-function groundPitchRoll(x, z, angle) {
+function groundPitchRoll(x, z, angle, refY) {
   const fx = -Math.sin(angle), fz = -Math.cos(angle);
   const rx = -fz, rz = fx;
   return {
-    pitch: Math.atan2(groundHeightAt(x + fx * 2.4, z + fz * 2.4) - groundHeightAt(x - fx * 2.4, z - fz * 2.4), 4.8),
-    roll: Math.atan2(groundHeightAt(x + rx * 1.7, z + rz * 1.7) - groundHeightAt(x - rx * 1.7, z - rz * 1.7), 3.4)
+    pitch: Math.atan2(groundHeightAt(x + fx * 2.4, z + fz * 2.4, refY) - groundHeightAt(x - fx * 2.4, z - fz * 2.4, refY), 4.8),
+    roll: Math.atan2(groundHeightAt(x + rx * 1.7, z + rz * 1.7, refY) - groundHeightAt(x - rx * 1.7, z - rz * 1.7, refY), 3.4)
   };
 }
 function rampTexture() {
@@ -308,10 +310,11 @@ function addRamp(x, z, angle) {
 }
 function applyGround(car, dt) {
   const p = car.mesh.position;
-  const gy = groundHeightAt(p.x, p.z);
+  const gy = groundHeightAt(p.x, p.z, p.y);
   if (!car.airborne) {
     car.groundVy = Math.max(-30, Math.min(30, (gy - car.lastGy) / Math.max(dt, 0.001)));
-    if (p.y - gy > 0.06 && car.groundVy > 1.2) {
+    if (p.y - gy > 1.4) { car.airborne = true; car.vyAir = 0; car.airTime = 0; } // drove off a deck edge
+    else if (p.y - gy > 0.06 && car.groundVy > 1.2) {
       car.airborne = true; car.vyAir = Math.min(10, car.groundVy); car.airTime = 0;
     } else p.y = gy;
   }
@@ -331,7 +334,7 @@ function applyGround(car, dt) {
       car.airTime = 0;
     }
   } else {
-    const gp = groundPitchRoll(p.x, p.z, car.angle);
+    const gp = groundPitchRoll(p.x, p.z, car.angle, p.y);
     car.mesh.rotation.x += gp.pitch;
     car.mesh.rotation.z += gp.roll * 0.85;
   }
@@ -519,6 +522,75 @@ function buildGaragePlaza(cx, cz) {
   addTree(90, 14, true); addTree(128, 58, true);
 }
 
+const PG = { x1: -62, x2: -10, z1: 10, z2: 62, l1: 5.2, l2: 10.4,
+  rampA: { x1: -58, x2: -18, z1: 12, z2: 21 }, openA: { x1: -34, x2: -18, z1: 12, z2: 21 },
+  rampB: { x1: -58, x2: -18, z1: 41, z2: 50 }, openB: { x1: -52, x2: -42, z1: 41, z2: 50 } };
+let PGDECKMATS = [];
+function inRect(x, z, r) { return x >= r.x1 && x <= r.x2 && z >= r.z1 && z <= r.z2; }
+function parkingHeight(x, z, refY) {
+  if (!inRect(x, z, PG)) return null;
+  const cands = [0];
+  if (inRect(x, z, PG.rampA)) cands.push(PG.l1 * (x - PG.rampA.x1) / (PG.rampA.x2 - PG.rampA.x1));
+  if (!inRect(x, z, PG.openA)) cands.push(PG.l1);
+  if (inRect(x, z, PG.rampB)) cands.push(PG.l1 + PG.l1 * (PG.rampB.x2 - x) / (PG.rampB.x2 - PG.rampB.x1));
+  if (!inRect(x, z, PG.openB)) cands.push(PG.l2);
+  cands.sort((a, b) => a - b);
+  let pick = cands[0];
+  for (const c of cands) if (c <= refY + 1.1) pick = c;
+  return pick;
+}
+function buildParkingGarage() {
+  const pgMat1 = new THREE.MeshStandardMaterial({ color: 0x7d838d, roughness: 0.9 });
+  const pgMat2 = new THREE.MeshStandardMaterial({ color: 0x868c96, roughness: 0.9 });
+  PGDECKMATS = [pgMat1, pgMat2];
+  const slab = (mat, x1, x2, z1, z2, y) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(x2 - x1, 0.5, z2 - z1), mat);
+    m.position.set((x1 + x2) / 2, y - 0.25, (z1 + z2) / 2);
+    m.castShadow = true; m.receiveShadow = true; scene.add(m);
+  };
+  // deck 1 (hole over ramp A: x -34..-18, z 12..21)
+  slab(pgMat1, -62, -10, 21, 62, PG.l1);
+  slab(pgMat1, -62, -34, 12, 21, PG.l1);
+  slab(pgMat1, -18, -10, 12, 21, PG.l1);
+  // deck 2 (hole over ramp B: x -52..-42, z 41..50)
+  slab(pgMat2, -62, -10, 10, 41, PG.l2);
+  slab(pgMat2, -62, -10, 50, 62, PG.l2);
+  slab(pgMat2, -62, -52, 41, 50, PG.l2);
+  slab(pgMat2, -42, -10, 41, 50, PG.l2);
+  // inter-level ramps
+  const rampMat = new THREE.MeshStandardMaterial({ color: 0x6e747e, roughness: 0.95 });
+  const mkRamp = (cy, cz, ang) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(Math.hypot(40, 5.2), 0.35, 9), rampMat);
+    m.position.set(-38, cy, cz); m.rotation.z = ang;
+    m.castShadow = true; m.receiveShadow = true; scene.add(m);
+  };
+  mkRamp(2.45, 16.5, Math.atan2(5.2, 40));
+  mkRamp(7.65, 45.5, -Math.atan2(5.2, 40));
+  // columns run the full height, so plan-view colliders stay honest
+  const colMat = new THREE.MeshStandardMaterial({ color: 0x9aa0a8, roughness: 0.85 });
+  for (const [cx2, cz2] of [[-52, 31], [-36, 31], [-20, 31], [-52, 56], [-36, 56], [-20, 56]]) {
+    const col = new THREE.Mesh(new THREE.BoxGeometry(1.1, 10.4, 1.1), colMat);
+    col.position.set(cx2, 5.2, cz2); col.castShadow = true; scene.add(col);
+    colliders.push({ x1: cx2 - 0.75, z1: cz2 - 0.75, x2: cx2 + 0.75, z2: cz2 + 0.75 });
+  }
+  // parapets on every level (one collider set works for all floors)
+  const parMat = new THREE.MeshStandardMaterial({ color: 0xa8adb6, roughness: 0.9 });
+  const par = (w, d, x, y, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.85, d), parMat); m.position.set(x, y + 0.42, z); m.castShadow = true; scene.add(m); };
+  for (const ly of [0, PG.l1, PG.l2]) {
+    par(52, 0.7, -36, ly, 10.3); par(52, 0.7, -36, ly, 61.7);
+    par(0.7, 18, -61.7, ly, 19); par(0.7, 18, -61.7, ly, 53);
+    par(0.7, 52, -10.3, ly, 36);
+  }
+  colliders.push({ x1: -62, z1: 9.7, x2: -10, z2: 10.9 });
+  colliders.push({ x1: -62, z1: 61.1, x2: -10, z2: 62.3 });
+  colliders.push({ x1: -62.3, z1: 9.7, x2: -61.1, z2: 28 });
+  colliders.push({ x1: -62.3, z1: 44, x2: -61.1, z2: 62.3 });
+  colliders.push({ x1: -10.9, z1: 9.7, x2: -9.7, z2: 62.3 });
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(13, 3.2),
+    new THREE.MeshBasicMaterial({ map: makeSignTexture('PARK', '#ffd76a'), side: THREE.DoubleSide }));
+  sign.position.set(-63.5, 12.6, 36); sign.rotation.y = -Math.PI / 2; scene.add(sign);
+}
+
 function buildCity() {
   scene = new THREE.Scene();
   const skyTex = makeSkyTexture();
@@ -628,6 +700,7 @@ function buildCity() {
     const cx = roadCoord(bi) + PITCH / 2, cz = roadCoord(bj) + PITCH / 2;
     if (bi === 0 && bj === 0) { makePark(cx, cz); continue; }
     if (bi === 1 && bj === 0) { buildGaragePlaza(cx, cz); continue; }
+    if (bi === -1 && bj === 0) { buildParkingGarage(); continue; }
     const n = 1 + Math.floor(Math.random() * 3);
     for (let b = 0; b < n; b++) makeBuilding(cx, cz, b);
     sprinkleProps(cx, cz);
@@ -1040,6 +1113,7 @@ function collideCars(dt) {
   for (let i = 0; i < cars.length; i++) for (let j = i + 1; j < cars.length; j++) {
     const a = cars[i], b = cars[j];
     const pa = a.mesh.position, pb = b.mesh.position;
+    if (Math.abs(pa.y - pb.y) > 3) continue; // different floors never collide
     const dx = pb.x - pa.x, dz = pb.z - pa.z;
     const d2 = dx * dx + dz * dz, min = 3.1;
     if (d2 > min * min || d2 < 0.0001) continue;
@@ -1071,6 +1145,7 @@ function collideCars(dt) {
 function collideProps(car, isPlayerCar) {
   if (Math.abs(car.speed) < 7) return;
   const p = car.mesh.position;
+  if (p.y > 2) return; // props live on the ground floor
   for (const s of smashables) {
     if (!s.alive) continue;
     const dx = p.x - s.x, dz = p.z - s.z;
@@ -1366,7 +1441,7 @@ function updateOfficers(dt) {
       if (dPlayer < 3.2) spd = 8.8; // final lunge
       if (dPlayer < 1.15) spd = 0;  // on top of you — grabbing
     }
-    o.grabbing = o.state === 'chase' && mode === 'foot' && dPlayer < 1.7;
+    o.grabbing = o.state === 'chase' && mode === 'foot' && dPlayer < 1.7 && Math.abs(char.position.y - o.mesh.position.y) < 3;
     const dx = tx - o.x, dz = tz - o.z, dl = Math.hypot(dx, dz);
     if (dl > 0.05 && spd > 0) {
       o.x += dx / dl * spd * dt;
@@ -1381,7 +1456,7 @@ function updateOfficers(dt) {
     if (o.grabbing) { o.mesh.userData.armL.rotation.x = -1.3; o.mesh.userData.armR.rotation.x = -1.3; }
     // run over?
     for (const c of cars) {
-      if (Math.abs(c.speed) > 4 && Math.hypot(c.mesh.position.x - o.x, c.mesh.position.z - o.z) < 1.2) {
+      if (Math.abs(c.speed) > 4 && Math.abs(c.mesh.position.y - o.mesh.position.y) < 3 && Math.hypot(c.mesh.position.x - o.x, c.mesh.position.z - o.z) < 1.2) {
         o.state = 'down'; o.timer = 4; o.mesh.rotation.x = Math.PI / 2; o.mesh.position.y = 0.25;
         splayArms(o.mesh);
         if (c === playerCar && mode === 'drive') addHeat(55, '🚔 OFFICER DOWN!');
@@ -1416,6 +1491,7 @@ function exitCar() {
   char.position.set(p.x + R.x * 2.4, 0, p.z + R.z * 2.4);
   char.visible = true;
   charAngle = playerCar.angle;
+  charGroundY = groundHeightAt(char.position.x, char.position.z, p.y);
   $('msg').textContent = '🚶 On foot! Walk to any car and press F to take it.';
   syncTouch();
 }
@@ -1514,7 +1590,7 @@ function reset() {
   for (const p of peds) scene.remove(p.mesh);
   for (const o of officers) scene.remove(o.mesh);
   if (heli) { scene.remove(heli); scene.remove(heli.userData.spotMesh); heli = null; }
-  cars = []; peds = []; cops = []; officers = [];
+  cars = []; peds = []; cops = []; officers = []; charGroundY = 0;
   cash = 0; heat = 0; wanted = 0; peakWanted = 0; health = 100; bustTimer = 0; elapsed = 0; submitted = false;
   topSpeed = 0; driftTime = 0; trafficTimer = 0; pedTimer = 0; copSpawnT = 0; seenByCop = false;
   mode = 'drive';
@@ -1522,6 +1598,8 @@ function reset() {
   addCar(0x60a5fa, 109, 16.5, Math.PI, 'parked');
   addCar(0xf8fafc, 118, 16.5, Math.PI, 'parked');
   addCar(0x34d399, 127, 16.5, Math.PI, 'parked');
+  const pgCar1 = addCar(0xf59e0b, -48, 55, Math.PI / 2, 'parked'); pgCar1.mesh.position.y = 5.2; pgCar1.lastGy = 5.2;
+  const pgCar2 = addCar(0x38bdf8, -24, 16, -Math.PI / 2, 'parked'); pgCar2.mesh.position.y = 10.4; pgCar2.lastGy = 10.4;
   if (char) scene.remove(char);
   char = makePedMesh(0xfacc15, 0x374151, { skin: 0xe0ac69, hair: 0x2b2118 });
   char.visible = false;
@@ -1611,19 +1689,25 @@ function animate() {
     underLight.intensity += (tI - underLight.intensity) * Math.min(1, dt * 5);
     if (underLight.intensity > 0.02) underLight.position.set(anchor.x, anchor.y + 3.4, anchor.z);
   }
-  // cutaway view: while you are underground, the garage roof — and the ground
-  // and hill terrain above it — fade away so nothing blocks your view
+  // cutaway view: whatever is above you fades out — the underground roof and
+  // ground when you are below street level, the parking decks when under them
   const under = anchor.y < -1.2;
-  const fadeM = (mesh, target) => {
-    if (!mesh) return;
-    const m = mesh.material;
+  const fadeMat = (m, target) => {
+    if (!m) return 1;
     m.transparent = true;
     m.opacity += (target - m.opacity) * Math.min(1, dt * 8);
     if (m.opacity > 0.995) { m.opacity = 1; m.transparent = false; }
-    mesh.visible = m.opacity > 0.04;
+    return m.opacity;
   };
+  const fadeM = (mesh, target) => { if (mesh) mesh.visible = fadeMat(mesh.material, target) > 0.04; };
   fadeM(ceilMesh, under ? 0 : 1);
   fadeM(groundMesh, under ? 0.1 : 1);
+  fadeM(terrMesh, under ? 0 : 1);
+  if (PGDECKMATS.length) {
+    const inPG = anchor.x > -70 && anchor.x < -2 && anchor.z > 2 && anchor.z < 70;
+    fadeMat(PGDECKMATS[0], inPG && anchor.y < 3.4 ? 0 : 1);
+    fadeMat(PGDECKMATS[1], inPG && anchor.y < 9.2 ? 0 : 1);
+  }
   fadeM(terrMesh, under ? 0 : 1);
   if (state === 'play') {
     elapsed += dt;
@@ -1679,7 +1763,8 @@ function animate() {
       }
     } else if (mode === 'foot') {
       updateChar(dt);
-      char.position.y += groundHeightAt(char.position.x, char.position.z);
+      charGroundY = groundHeightAt(char.position.x, char.position.z, charGroundY);
+      char.position.y += charGroundY;
       if (state !== 'play') { renderer.render(scene, camera); return; }
     }
     // ---------- AI cars ----------
@@ -1733,14 +1818,14 @@ function animate() {
     }
     // ---------- bust checks ----------
     if (wanted > 0) {
-      const officerNear = officers.some(o => o.state === 'chase' && Math.hypot(o.x - anchor.x, o.z - anchor.z) < 2.6);
+      const officerNear = officers.some(o => o.state === 'chase' && Math.abs(o.mesh.position.y - anchor.y) < 3 && Math.hypot(o.x - anchor.x, o.z - anchor.z) < 2.6);
       if (mode === 'drive' && playerCar) {
-        const pinned = Math.abs(playerCar.speed) < 2.5 && (officerNear || activeCops.some(c => Math.hypot(c.mesh.position.x - anchor.x, c.mesh.position.z - anchor.z) < 7));
+        const pinned = Math.abs(playerCar.speed) < 2.5 && (officerNear || activeCops.some(c => Math.abs(c.mesh.position.y - anchor.y) < 3.5 && Math.hypot(c.mesh.position.x - anchor.x, c.mesh.position.z - anchor.z) < 7));
         bustTimer = pinned ? bustTimer + dt * (officerNear ? 1.35 : 1) : Math.max(0, bustTimer - dt * 2);
         if (bustTimer >= 2) { gameOver('busted'); }
       } else if (mode === 'foot') {
         const officerGrab = officers.some(o => o.grabbing);
-        const grabbed = officerGrab || activeCops.some(c => Math.hypot(c.mesh.position.x - anchor.x, c.mesh.position.z - anchor.z) < 5.5);
+        const grabbed = officerGrab || activeCops.some(c => Math.abs(c.mesh.position.y - anchor.y) < 3.5 && Math.hypot(c.mesh.position.x - anchor.x, c.mesh.position.z - anchor.z) < 5.5);
         bustTimer = grabbed ? bustTimer + dt * (officerGrab ? 1.5 : 1) : Math.max(0, bustTimer - dt * 2);
         if (bustTimer >= 1.6) { gameOver('busted'); }
       }
