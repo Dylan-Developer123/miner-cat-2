@@ -290,7 +290,7 @@ function rampTexture() {
   t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1, 2);
   return t;
 }
-function addRamp(x, z, angle) {
+function addRamp(x, z, angle, baseY) {
   const g = new THREE.Group();
   const W = 7, L = 9.5, H = 2.7, slope = Math.atan2(H, L);
   const top = new THREE.Mesh(new THREE.BoxGeometry(W, 0.35, L + 1.4),
@@ -303,7 +303,7 @@ function addRamp(x, z, angle) {
     const leg = new THREE.Mesh(new THREE.BoxGeometry(0.35, H, 0.35), frameM);
     leg.position.set(sx, H / 2, -L / 2 + 0.5); g.add(leg);
   }
-  g.position.set(x, 0, z); g.rotation.y = angle;
+  g.position.set(x, baseY || 0, z); g.rotation.y = angle;
   g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   scene.add(g);
   RAMPS.push({ x, z, angle, w: W, l: L, h: H });
@@ -313,19 +313,21 @@ function applyGround(car, dt) {
   const gy = groundHeightAt(p.x, p.z, p.y);
   if (!car.airborne) {
     car.groundVy = Math.max(-30, Math.min(30, (gy - car.lastGy) / Math.max(dt, 0.001)));
-    if (p.y - gy > 1.4) { car.airborne = true; car.vyAir = 0; car.airTime = 0; } // drove off a deck edge
-    else if (p.y - gy > 0.06 && car.groundVy > 1.2) {
-      car.airborne = true; car.vyAir = Math.min(10, car.groundVy); car.airTime = 0;
+    if (car.groundVy > 0.5) car.climbVy = car.groundVy; // how fast the ground was lifting us
+    else car.climbVy = Math.max(0, car.climbVy - dt * 22);
+    if ((p.y - gy > 0.06 && car.climbVy > 1.2) || p.y - gy > 1.4) {
+      // LAUNCH: the ground fell away mid-climb — the climb speed becomes flight speed
+      car.airborne = true; car.vyAir = Math.min(15, car.climbVy * 1.3); car.airTime = 0;
     } else p.y = gy;
   }
   if (car.airborne) {
     car.airTime += dt;
-    car.vyAir -= 23 * dt;
+    car.vyAir -= 16.5 * dt; // floatier gravity = higher, longer flights
     p.y += car.vyAir * dt;
     car.mesh.rotation.x += Math.min(0.3, car.airTime * 0.3);
     if (p.y <= gy) {
       const impact = -car.vyAir;
-      p.y = gy; car.airborne = false;
+      p.y = gy; car.airborne = false; car.climbVy = 0;
       if (car === playerCar && mode === 'drive') {
         if (car.airTime > 0.4) { const pts = Math.round(car.airTime * 120); cash += pts; addHeat(6); flash(`🕊️ AIR TIME ${car.airTime.toFixed(1)}s +$${pts}`); }
         if (impact > 13) { damageCar((impact - 12) * 1.6, 'landing'); shake = Math.max(shake, 0.5); }
@@ -524,7 +526,8 @@ function buildGaragePlaza(cx, cz) {
 
 const PG = { x1: -62, x2: -10, z1: 10, z2: 62, l1: 5.2, l2: 10.4,
   rampA: { x1: -58, x2: -18, z1: 12, z2: 21 }, openA: { x1: -34, x2: -18, z1: 12, z2: 21 },
-  rampB: { x1: -58, x2: -18, z1: 41, z2: 50 }, openB: { x1: -52, x2: -42, z1: 41, z2: 50 } };
+  rampB: { x1: -58, x2: -18, z1: 41, z2: 50 }, openB: { x1: -52, x2: -42, z1: 41, z2: 50 },
+  roofRamp: { x1: -39.5, x2: -32.5, z1: 25.5, z2: 35, h: 2.7 } };
 let PGDECKMATS = [];
 function inRect(x, z, r) { return x >= r.x1 && x <= r.x2 && z >= r.z1 && z <= r.z2; }
 function parkingHeight(x, z, refY) {
@@ -534,6 +537,7 @@ function parkingHeight(x, z, refY) {
   if (!inRect(x, z, PG.openA)) cands.push(PG.l1);
   if (inRect(x, z, PG.rampB)) cands.push(PG.l1 + PG.l1 * (PG.rampB.x2 - x) / (PG.rampB.x2 - PG.rampB.x1));
   if (!inRect(x, z, PG.openB)) cands.push(PG.l2);
+  if (inRect(x, z, PG.roofRamp)) cands.push(PG.l2 + PG.roofRamp.h * (PG.roofRamp.z2 - z) / (PG.roofRamp.z2 - PG.roofRamp.z1));
   cands.sort((a, b) => a - b);
   let pick = cands[0];
   for (const c of cands) if (c <= refY + 1.1) pick = c;
@@ -566,6 +570,7 @@ function buildParkingGarage() {
   };
   mkRamp(2.45, 16.5, Math.atan2(5.2, 40));
   mkRamp(7.65, 45.5, -Math.atan2(5.2, 40));
+  addRamp(-36, 30.25, 0, PG.l2); // stunt ramp on the roof deck
   // columns run the full height, so plan-view colliders stay honest
   const colMat = new THREE.MeshStandardMaterial({ color: 0x9aa0a8, roughness: 0.85 });
   for (const [cx2, cz2] of [[-52, 31], [-36, 31], [-20, 31], [-52, 56], [-36, 56], [-20, 56]]) {
@@ -891,7 +896,7 @@ function addCar(color, x, z, angle, kind, opts = {}) {
   const car = {
     id: carId++, mesh, kind, // 'traffic' | 'cop' | 'parked'
     angle, vx: 0, vz: 0, steerVis: 0,
-    speed: 0, targetSpeed: 0, spin: 0, dead: false, steerCur: 0, officerOut: false, pedalT: 0, pedalB: 0, gear: 1, shiftT: 0, prevVF: 0, longA: 0, wheelspin: false, skid: false, power: opts.power || 1, airborne: false, vyAir: 0, airTime: 0, groundVy: 0, lastGy: 0,
+    speed: 0, targetSpeed: 0, spin: 0, dead: false, steerCur: 0, officerOut: false, pedalT: 0, pedalB: 0, gear: 1, shiftT: 0, prevVF: 0, longA: 0, wheelspin: false, skid: false, power: opts.power || 1, airborne: false, vyAir: 0, airTime: 0, groundVy: 0, lastGy: 0, climbVy: 0,
     ai: { axis: opts.axis || 'z', dir: opts.dir || -1, lane: opts.lane || 0, turnT: 2 + Math.random() * 5, panic: 0, stuck: 0 },
     nearMissed: false, wrecked: false
   };
