@@ -1687,7 +1687,7 @@ function animate() {
     if (c.mesh.userData.blue) c.mesh.userData.blue.material.color.setHex(phase ? 0x112255 : 0x2266ff);
   }
   if (flashT > 0) { flashT -= dt; if (flashT <= 0) $('flashmsg').style.opacity = 0; }
-  if (state !== 'play' && tchOwners.size) releaseAllTch();
+  if (state !== 'play' && ptrBtn.size) releaseAllTch();
   const anchor = mode === 'drive' && playerCar ? playerCar.mesh.position : (char ? char.position : { x: 0, z: 0 });
   if (underLight) {
     const tI = anchor.y < -1.5 ? 1.7 : 0;
@@ -1719,6 +1719,14 @@ function animate() {
     peakWanted = Math.max(peakWanted, wanted);
     // ---------- player ----------
     if (mode === 'drive' && playerCar) {
+      const tDir = (tch.left ? 1 : 0) - (tch.right ? 1 : 0);
+      if (tDir !== 0 && tDir === tchSteerDir) {
+        tchSteerT += dt;
+        if (tchSteerT > 4.5) {
+          for (const [pid, v] of ptrBtn) if (v.flag === 'left' || v.flag === 'right') ptrBtn.delete(pid);
+          refreshTch(); tchSteerT = 0;
+        }
+      } else { tchSteerDir = tDir; tchSteerT = 0; }
       const input = {
         steer: ((keys.left || keys.a || tch.left) ? 1 : 0) - ((keys.right || keys.d || tch.right) ? 1 : 0),
         throttle: (keys.up || keys.w || tch.up) ? 1 : 0,
@@ -1939,27 +1947,37 @@ addEventListener('keydown', e => {
 addEventListener('keyup', e => { phys[e.code] = false; syncKeys(); });
 addEventListener('blur', () => { for (const c in phys) phys[c] = false; syncKeys(); });
 const tch = {};
-const tchOwners = new Map(); // pointerId -> release fn: a held flag can never get stuck on
-function hold(id, set) {
-  const el = $(id);
-  const ptrs = new Set();
-  const apply = () => set(ptrs.size > 0);
-  el.addEventListener('pointerdown', e => {
+const ptrBtn = new Map(); // pointerId -> {flag, id}: every finger currently down, tracked at window level
+const btnFlag = new Map(); // button element id -> flag name
+let tchSteerT = 0, tchSteerDir = 0;
+function refreshTch() {
+  for (const f of ['left', 'right', 'up', 'down', 'drift', 'run']) tch[f] = false;
+  for (const v of ptrBtn.values()) tch[v.flag] = true;
+  for (const [id] of btnFlag) {
+    const el = $(id);
+    if (!el) continue;
+    let on = false;
+    for (const v of ptrBtn.values()) if (v.id === id) { on = true; break; }
+    el.classList.toggle('on', on);
+  }
+}
+function hold(id, name) {
+  btnFlag.set(id, name);
+  $(id).addEventListener('pointerdown', e => {
     e.preventDefault();
-    try { el.setPointerCapture(e.pointerId); } catch (err) {}
-    ptrs.add(e.pointerId);
-    tchOwners.set(e.pointerId, () => { ptrs.delete(e.pointerId); apply(); });
-    apply();
     if (state !== 'play') start();
   });
-  const off = e => { const f = tchOwners.get(e.pointerId); if (f) { f(); tchOwners.delete(e.pointerId); } };
-  el.addEventListener('pointerup', off);
-  el.addEventListener('pointercancel', off);
-  el.addEventListener('lostpointercapture', off);
 }
-window.addEventListener('pointerup', e => { const f = tchOwners.get(e.pointerId); if (f) { f(); tchOwners.delete(e.pointerId); } });
-window.addEventListener('pointercancel', e => { const f = tchOwners.get(e.pointerId); if (f) { f(); tchOwners.delete(e.pointerId); } });
-function releaseAllTch() { for (const f of tchOwners.values()) f(); tchOwners.clear(); }
+window.addEventListener('pointerdown', e => {
+  let t = e.target;
+  while (t && t !== document.body) {
+    if (t.id && btnFlag.has(t.id)) { ptrBtn.set(e.pointerId, { flag: btnFlag.get(t.id), id: t.id }); refreshTch(); return; }
+    t = t.parentElement;
+  }
+}, true);
+window.addEventListener('pointerup', e => { if (ptrBtn.delete(e.pointerId)) refreshTch(); }, true);
+window.addEventListener('pointercancel', e => { if (ptrBtn.delete(e.pointerId)) refreshTch(); }, true);
+function releaseAllTch() { if (ptrBtn.size) { ptrBtn.clear(); refreshTch(); } }
 window.addEventListener('blur', releaseAllTch);
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) { releaseAllTch(); for (const k in phys) phys[k] = false; syncKeys(); }
@@ -1967,17 +1985,17 @@ document.addEventListener('visibilitychange', () => {
 function tap(id, fn) {
   $(id).addEventListener('pointerdown', e => { e.preventDefault(); if (state === 'play') fn(); });
 }
-hold('d-left', v => tch.left = v);
-hold('d-right', v => tch.right = v);
-hold('d-gas', v => tch.up = v);
-hold('d-brake', v => tch.down = v);
-hold('d-drift', v => tch.drift = v);
+hold('d-left', 'left');
+hold('d-right', 'right');
+hold('d-gas', 'up');
+hold('d-brake', 'down');
+hold('d-drift', 'drift');
 tap('d-exit', exitCar);
-hold('f-up', v => tch.up = v);
-hold('f-down', v => tch.down = v);
-hold('f-left', v => tch.left = v);
-hold('f-right', v => tch.right = v);
-hold('f-run', v => tch.run = v);
+hold('f-up', 'up');
+hold('f-down', 'down');
+hold('f-left', 'left');
+hold('f-right', 'right');
+hold('f-run', 'run');
 tap('f-enter', enterCar);
 $('restart').onclick = () => { if (state === 'play') reset(); start(); };
 // --- Site account (the Miner Cat account works everywhere) ---
