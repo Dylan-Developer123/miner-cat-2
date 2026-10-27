@@ -270,6 +270,18 @@ function drawBigMap() {
   bm.fillRect(cx + 152 * S, cy + 296 * S, 128 * S, 56 * S); // south school
   bm.fillStyle = '#77643f'; bm.fillRect(cx - 280 * S, cy - 136 * S, 56 * S, 128 * S); // big neighborhood
   bm.fillRect(cx - 208 * S, cy + 152 * S, 56 * S, 128 * S); // second big neighborhood
+  // the curved roads, stroked along their paths (casing, then the pale ribbon)
+  const strokePath = (pts, close) => {
+    bm.beginPath();
+    for (let i = 0; i < pts.length; i++) { const X = cx + pts[i][0] * S, Y = cy + pts[i][1] * S; if (i === 0) bm.moveTo(X, Y); else bm.lineTo(X, Y); }
+    if (close) bm.closePath();
+    bm.stroke();
+  };
+  bm.lineJoin = 'round'; bm.lineCap = 'round';
+  bm.strokeStyle = '#14161a'; bm.lineWidth = (ROAD_W + 5.5) * S;
+  strokePath(RING_PTS, true); strokePath(PARK_PTS, false);
+  bm.strokeStyle = '#ccd1da'; bm.lineWidth = ROAD_W * S;
+  strokePath(RING_PTS, true); strokePath(PARK_PTS, false);
   bm.font = 'bold 15px sans-serif'; bm.fillStyle = '#ffd95e'; bm.textAlign = 'center';
   bm.fillText('🌳 BIG PARK', cx + 324 * S, cy + 148 * S);
   bm.fillText('🌲 NORTH PARK', cx - 288 * S, cy - 284 * S);
