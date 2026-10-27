@@ -697,34 +697,59 @@ function makePoliceStation(cx, cz) {
   colliders.push({ x1: cx - 10.5, z1: cz - 6, x2: cx + 10.5, z2: cz + 6 });
   sprinkleProps(cx, cz);
 }
-function createRenderer() {
-  // Safari on iPad can hand back a stillborn WebGL2 context whose shader-precision
-  // query returns null (THREE dies reading .precision). Fall through gentler
-  // settings and finally classic WebGL1, which is all this game needs.
-  const attempts = [
-    () => new THREE.WebGLRenderer({ antialias: true }),
-    () => new THREE.WebGLRenderer({ antialias: false, powerPreference: 'low-power', stencil: false, precision: 'mediump' }),
-    () => new THREE.WebGL1Renderer({ antialias: false, powerPreference: 'low-power', stencil: false, precision: 'mediump' }),
-    () => new THREE.WebGL1Renderer({ antialias: false, powerPreference: 'low-power', stencil: false, precision: 'lowp' })
+function glHealthy(gl) {
+  try {
+    if (!gl || (gl.isContextLost && gl.isContextLost())) return false;
+    if (typeof gl.getParameter(gl.VERSION) !== 'string') return false;
+    if (!gl.getShaderPrecisionFormat(gl.VERTEX_SHADER, gl.HIGH_FLOAT)) return false;
+    return true;
+  } catch (e) { return false; }
+}
+function waitRestore(canvas, ms) {
+  return new Promise(res => {
+    let done = false;
+    const to = setTimeout(() => { if (!done) { done = true; res(false); } }, ms);
+    canvas.addEventListener('webglcontextrestored', () => { if (!done) { done = true; clearTimeout(to); res(true); } }, { once: true });
+  });
+}
+async function createRenderer() {
+  // Safari on iPad can hand back a WebGL context that is ALREADY lost: every call
+  // on it returns null and THREE dies deep inside its constructor (first on
+  // getShaderPrecisionFormat, then on getParameter(VERSION)). So we make the raw
+  // context ourselves, health-check it, give a stillborn one a moment to revive
+  // (preventDefault on contextlost is what allows restore), and only hand THREE
+  // a context that actually answers questions.
+  const plans = [
+    { types: ['webgl2'], opts: { antialias: true }, params: { antialias: true } },
+    { types: ['webgl2'], opts: { antialias: false, powerPreference: 'low-power', stencil: false }, params: { antialias: false, powerPreference: 'low-power', stencil: false, precision: 'mediump' } },
+    { types: ['webgl', 'experimental-webgl'], opts: { antialias: false, powerPreference: 'low-power', stencil: false }, params: { antialias: false, powerPreference: 'low-power', stencil: false, precision: 'mediump' } },
+    { types: ['webgl', 'experimental-webgl'], opts: { antialias: false, powerPreference: 'low-power', stencil: false }, params: { antialias: false, powerPreference: 'low-power', stencil: false, precision: 'lowp' } }
   ];
   let lastErr = null;
-  for (const make of attempts) {
+  for (const plan of plans) {
+    let gl = null, canvas = null;
     try {
-      const r = make();
-      const gl = r.getContext();
-      if (!gl || (gl.isContextLost && gl.isContextLost())) throw new Error('WebGL context was lost');
-      return r;
-    } catch (e) { lastErr = e; }
+      canvas = document.createElement('canvas');
+      canvas.addEventListener('webglcontextlost', ev => ev.preventDefault());
+      for (const t of plan.types) { gl = canvas.getContext(t, plan.opts); if (gl) break; }
+      if (!gl) throw new Error('WebGL context unavailable');
+      if (!glHealthy(gl)) await waitRestore(canvas, 1600);
+      if (!glHealthy(gl)) throw new Error('WebGL context was lost');
+      return new THREE.WebGLRenderer(Object.assign({ canvas, context: gl }, plan.params));
+    } catch (e) {
+      lastErr = e;
+      try { const lx = gl && gl.getExtension('WEBGL_lose_context'); if (lx) lx.loseContext(); } catch (e2) {}
+    }
   }
   throw lastErr || new Error('WebGL is unavailable');
 }
-function buildCity() {
+async function buildCity() {
   scene = new THREE.Scene();
   const skyTex = makeSkyTexture();
   scene.background = skyTex;
   scene.fog = new THREE.Fog(0x2a2233, 130, 560);
   camera = new THREE.PerspectiveCamera(66, 720 / 460, 0.1, 1300);
-  renderer = createRenderer();
+  renderer = await createRenderer();
   renderer.domElement.addEventListener('webglcontextlost', ev => {
     ev.preventDefault();
     try { if (!sessionStorage.getItem('cp_ctx')) { sessionStorage.setItem('cp_ctx', '1'); location.reload(); } } catch (e2) {}
