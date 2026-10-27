@@ -901,25 +901,27 @@ async function buildCity() {
     m.rotation.x = -Math.PI / 2; m.rotation.z = Math.PI / 2; m.position.y = 0.01; m.receiveShadow = true;
     return m;
   };
+  // NOTE: the run tracker uses null for "no run open" — a numeric sentinel like -1
+  // collides with real segment indices (j runs -6..5) and silently ate whole runs
   for (let k = -GRID; k <= GRID; k++) {
-    let runStart = -1;
+    let runStart = null;
     for (let j = -GRID; j <= GRID; j++) {
       const land = j < GRID && segClear('v', k, j);
-      if (land && runStart < 0) runStart = j;
-      if ((!land || j === GRID) && runStart >= 0) {
+      if (land && runStart === null) runStart = j;
+      if ((!land || j === GRID) && runStart !== null) {
         const len = (j - runStart) * PITCH + 0.6;
         const m = mkRoad(ROAD_W, len); m.position.set(roadCoord(k), 0.01, roadCoord(runStart) + len / 2); scene.add(m);
-        runStart = -1;
+        runStart = null;
       }
     }
-    runStart = -1;
+    runStart = null;
     for (let j = -GRID; j <= GRID; j++) {
       const land = j < GRID && segClear('h', k, j);
-      if (land && runStart < 0) runStart = j;
-      if ((!land || j === GRID) && runStart >= 0) {
+      if (land && runStart === null) runStart = j;
+      if ((!land || j === GRID) && runStart !== null) {
         const len = (j - runStart) * PITCH + 0.6;
         const m = mkRoadH(ROAD_W, len); m.position.set(roadCoord(runStart) + len / 2, 0.01, roadCoord(k)); scene.add(m);
-        runStart = -1;
+        runStart = null;
       }
     }
   }
