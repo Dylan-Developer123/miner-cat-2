@@ -379,4 +379,7 @@ async function submitScore(s) {
   $('acct').innerHTML = ME ? `👤 Playing as <b>${esc(ME.displayName)}</b> — your best cash haul saves to your account` : '👤 <a href="/miner-cat-2" style="color:#f5c542;">Sign in</a> to save scores to your account';
   loadLb();
 })();
-if (window.THREE) { buildCity(); reset(); syncTouch(); animate(); }
+if (window.THREE) {
+  try { buildCity(); } catch (err) { $('msg').textContent = '⚠️ buildCity failed: ' + err.message; throw err; }
+  try { reset(); syncTouch(); animate(); } catch (err) { $('msg').textContent = '⚠️ start failed: ' + err.message; throw err; }
+}
