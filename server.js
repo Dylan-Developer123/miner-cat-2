@@ -723,7 +723,10 @@ async function main() {
   // -------------------------------------------------------------------------
   // Static frontend
   // -------------------------------------------------------------------------
-  app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] }));
+  app.use(express.static(path.join(__dirname, 'public'), {
+    extensions: ['html'],
+    setHeaders: (res, filePath) => { if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache'); }
+  }));
   // SPA fallback: unknown non-API routes serve the game.
   app.get(/^\/(?!api\/).*/, (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
