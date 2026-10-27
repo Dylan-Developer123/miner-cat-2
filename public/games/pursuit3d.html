@@ -31,6 +31,9 @@
   #flashmsg { position: absolute; top: 16%; left: 0; right: 0; text-align: center; font-size: 26px; font-weight: 800; color: #fde68a; text-shadow: 0 2px 10px #000; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 6; }
   #bigOverlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column; z-index: 8; border-radius: 12px; }
   #bigOverlay.wasted { display: flex; background: radial-gradient(ellipse at center, rgba(60,0,0,.45), rgba(10,0,0,.88)); }
+  #bigMapWrap { position: absolute; inset: 0; z-index: 7; display: none; background: rgba(5,8,14,.93); align-items: center; justify-content: center; }
+  #bigMapWrap.on { display: flex; }
+  #bigMap { border: 3px solid rgba(255,255,255,.25); border-radius: 12px; max-width: 97%; max-height: 97%; }
   #bigOverlay.busted { display: flex; background: radial-gradient(ellipse at center, rgba(0,20,70,.45), rgba(0,5,25,.88)); }
   #bigText { font-size: 64px; font-weight: 900; letter-spacing: 14px; color: #e5e7eb; text-shadow: 0 4px 24px #000; }
   #bigOverlay.busted #bigText { color: #93c5fd; }
@@ -60,6 +63,7 @@
   <div id="speedHud">0<small>MPH</small></div>
   <div id="flashmsg"></div>
   <div id="bigOverlay"><div id="bigText"></div><div id="bigSub"></div></div>
+  <div id="bigMapWrap"><canvas id="bigMap" width="920" height="920"></canvas></div>
 </div>
 <div id="msg">An open city, real car physics, and cops who really want you. Cause chaos, earn cash, lose the heat.</div>
 <div class="touch" id="touchDrive">
@@ -76,6 +80,7 @@
 <button class="action" id="mpBtn" style="background:#2563eb">🌐 Multiplayer: OFF</button>
 <button class="action" id="tagBtn" style="background:#2563eb">🏷️ Name Tags: ON</button>
 <button class="action" id="carBtn" style="background:#7c3aed">🚗 Car: 🔴 Street Racer</button>
+<button class="action" id="mapBtn" style="background:#0e7490">🗺️ Full Map</button>
 <div id="acct"></div>
 <div id="lb"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -890,6 +895,8 @@ function makeCarMesh(color, opts = {}) {
   g.traverse(o => { if (o.isMesh && !o.userData.noShadow) o.castShadow = true; });
   return g;
 }
+const VMAX_REG = 150 / 2.24; // regular cars top out at 150 MPH
+const VMAX_COP = 200 / 2.24; // police cars top out at 200 MPH
 let carId = 0;
 function addCar(color, x, z, angle, kind, opts = {}) {
   const mesh = makeCarMesh(color, opts);
@@ -899,7 +906,7 @@ function addCar(color, x, z, angle, kind, opts = {}) {
   const car = {
     id: carId++, mesh, kind, colorHex: color, // 'traffic' | 'cop' | 'parked'
     angle, vx: 0, vz: 0, steerVis: 0,
-    speed: 0, targetSpeed: 0, spin: 0, dead: false, steerCur: 0, officerOut: false, pedalT: 0, pedalB: 0, gear: 1, shiftT: 0, prevVF: 0, longA: 0, wheelspin: false, skid: false, power: opts.power || 1, isCop: !!opts.cop, airborne: false, vyAir: 0, airTime: 0, groundVy: 0, lastGy: 0, climbVy: 0,
+    speed: 0, targetSpeed: 0, spin: 0, dead: false, steerCur: 0, officerOut: false, pedalT: 0, pedalB: 0, gear: 1, shiftT: 0, prevVF: 0, longA: 0, wheelspin: false, skid: false, power: opts.power || 1, isCop: !!opts.cop, topSpd: opts.cop ? VMAX_COP : VMAX_REG, airborne: false, vyAir: 0, airTime: 0, groundVy: 0, lastGy: 0, climbVy: 0,
     ai: { axis: opts.axis || 'z', dir: opts.dir || -1, lane: opts.lane || 0, turnT: 2 + Math.random() * 5, panic: 0, stuck: 0 },
     nearMissed: false, wrecked: false
   };
@@ -1014,12 +1021,12 @@ function stepVehicle(car, dt, input) {
   car.steerCur += Math.max(-steerRate * dt, Math.min(steerRate * dt, steerTarget - car.steerCur));
   const F0 = fwd(car);
   const vF0 = car.vx * F0.x + car.vz * F0.z;
-  const lock = 1 / (1 + Math.abs(vF0) * 0.026);
+  const lock = 1 / (1 + Math.abs(vF0) * 0.016);
   const authority = Math.max(-1, Math.min(1, vF0 / 4.5));
   let omega = car.steerCur * lock * 1.6 * authority * (input.handbrake ? 1.35 : 1);
   // friction circle: tires can only pull so hard sideways — demand more and you understeer wide
   const latAccDemand = Math.abs(omega * vF0);
-  const gripBudget = input.handbrake ? 999 : 30;
+  const gripBudget = input.handbrake ? 999 : 44;
   if (latAccDemand > gripBudget && Math.abs(vF0) > 0.1) omega *= gripBudget / latAccDemand;
   car.angle += omega * dt;
   const F = fwd(car), R = { x: -F.z, z: F.x };
@@ -1027,14 +1034,14 @@ function stepVehicle(car, dt, input) {
   let vL = car.vx * R.x + car.vz * R.z;
   // --- 5 gears: pull steps down as speed climbs, with a shift pause ---
   const spd = Math.abs(vF);
-  const gear = spd < 9 ? 1 : spd < 17 ? 2 : spd < 25 ? 3 : spd < 33 ? 4 : 5;
+  const gear = spd < 16 ? 1 : spd < 30 ? 2 : spd < 45 ? 3 : spd < 60 ? 4 : 5;
   if (gear > car.gear && car.pedalT > 0.45) car.shiftT = 0.26;
   car.gear = gear;
   if (car.shiftT > 0) car.shiftT -= dt;
   const gearMult = [0, 1.3, 1.02, 0.85, 0.7, 0.58][gear];
   // --- traction: stomp it off the line and the wheels just spin ---
   car.wheelspin = car.pedalT > 0.72 && spd < 7 && !input.handbrake;
-  let force = car.pedalT * 33 * gearMult * (car.power || 1);
+  let force = car.pedalT * 46 * gearMult * (car.power || 1);
   if (car.shiftT > 0) force *= 0.25;
   if (car.wheelspin) force *= 0.5;
   if (input.handbrake) force *= 0.3;
@@ -1045,10 +1052,13 @@ function stepVehicle(car, dt, input) {
   car.skid = car.pedalB > 0.85 && vF > 11;
   if (car.pedalB > 0.02) {
     if (vF > 0.5) vF -= car.pedalB * 40 * (car.skid ? 0.82 : 1) * dt;
-    else vF = Math.max(-13, vF - car.pedalB * 17 * dt);
+    else vF = Math.max(-20, vF - car.pedalB * 17 * dt);
   }
   // --- drag ---
-  vF -= vF * 0.3 * dt + Math.sign(vF) * vF * vF * 0.006 * dt;
+  vF -= vF * 0.2 * dt + Math.sign(vF) * vF * vF * 0.0016 * dt;
+  // top-speed governor
+  const topSpd = car.topSpd || VMAX_REG;
+  if (vF > topSpd) vF = topSpd + (vF - topSpd) * Math.exp(-4 * dt);
   if (car.pedalT < 0.05 && car.pedalB < 0.05) vF -= Math.sign(vF) * Math.min(Math.abs(vF), 2.4 * dt);
   // --- lateral grip (handbrake / locked brakes / overcooked corner = slide) ---
   let grip = input.handbrake ? 1.6 : car.skid ? 2.8 : 8.0;
@@ -1224,7 +1234,7 @@ function trafficInput(car, dt) {
   const aimX = p.x + F.x * 13 + (ai.axis === 'z' ? latErr : 0);
   const aimZ = p.z + F.z * 13 + (ai.axis === 'x' ? latErr : 0);
   const input = { steer: steerTo(car, aimX, aimZ, 2.0), throttle: 0, brake: false, handbrake: false };
-  const cruise = ai.panic > 0 ? 24 : (car.cruise || 15);
+  const cruise = ai.panic > 0 ? 34 : (car.cruise || 19);
   const ahead = aheadEntity(car, 10);
   if (ahead !== null && ahead < 6) input.brake = car.speed > 1.2;
   else if (ahead !== null) input.throttle = car.speed < cruise * 0.5 ? 0.7 : 0;
@@ -1271,7 +1281,7 @@ function copInput(car, dt) {
       if (ai.stuck > 1.1) ai.reverse = 0.7;
       if (ai.reverse > 0) { ai.reverse -= dt; rin.brake = true; rin.steer *= -1; return rin; }
       rin.throttle = car.speed < 13 ? Math.min(1, 0.35 + wd / 14) : 0; // take the ramp gently
-      if (car.speed > 16) rin.brake = true;
+      if (car.speed > 22) rin.brake = true;
       return rin;
     }
   } else car.gWp = undefined;
@@ -1313,7 +1323,7 @@ function spawnTrafficCar() {
     const isTaxi = Math.random() < 0.16;
     const car = addCar(isTaxi ? 0xfacc15 : kinds[Math.floor(Math.random() * kinds.length)], x, z, angle, 'traffic', { axis, dir, taxi: isTaxi });
     car.ai.road = road;
-    car.cruise = 12.5 + Math.random() * 5.5;
+    car.cruise = 17 + Math.random() * 7;
     return;
   }
 }
@@ -1896,7 +1906,7 @@ function animate() {
     });
     hud();
     mpTick(dt); updateRemotes(dt);
-    minimap(now);
+    if (bigMapOn) drawBigMap(); else minimap(now);
   }
   // ---------- camera ----------
   if (playerCar) {
@@ -2151,6 +2161,7 @@ function changeCar() {
     playerCar.colorHex = spec.color;
     playerCar.isCop = !!spec.cop;
     playerCar.power = spec.power;
+    playerCar.topSpd = spec.cop ? VMAX_COP : VMAX_REG;
     applyRole();
     mpSendT = 0;
   }
@@ -2175,6 +2186,58 @@ $('tagBtn').onclick = () => {
 tagUi();
 $('mpBtn').onclick = mpConnect;
 
+// ============================== FULLSCREEN MAP ==============================
+let bigMapOn = false;
+function toggleMap(force) {
+  bigMapOn = force !== undefined ? !!force : !bigMapOn;
+  $('bigMapWrap').classList.toggle('on', bigMapOn);
+  $('mapBtn').textContent = bigMapOn ? '🗺️ Close Map' : '🗺️ Full Map';
+}
+$('mapBtn').onclick = () => toggleMap();
+$('bigMapWrap').onclick = () => toggleMap(false);
+$('minimapWrap').addEventListener('click', () => toggleMap(true));
+const bm = $('bigMap').getContext('2d');
+function drawBigMap() {
+  const S = 920 / 660, cx = 460, cy = 460, now = performance.now();
+  bm.fillStyle = '#17351a'; bm.fillRect(0, 0, 920, 920); // countryside
+  bm.fillStyle = '#2a2e36'; bm.fillRect(cx - CITY * S, cy - CITY * S, CITY * 2 * S, CITY * 2 * S); // city ground
+  bm.fillStyle = '#1e4620'; bm.fillRect(cx + 8 * S, cy + 8 * S, 56 * S, 56 * S); // park
+  bm.fillStyle = '#4b5563'; // roads
+  for (let k = -GRID; k <= GRID; k++) {
+    bm.fillRect(cx + (roadCoord(k) - ROAD_W / 2) * S, cy - CITY * S, ROAD_W * S, CITY * 2 * S);
+    bm.fillRect(cx - CITY * S, cy + (roadCoord(k) - ROAD_W / 2) * S, CITY * 2 * S, ROAD_W * S);
+  }
+  bm.fillStyle = '#3f4a5a'; bm.fillRect(cx + 80 * S, cy + 8 * S, 56 * S, 56 * S); // underground garage block
+  bm.fillStyle = '#5b4a2f'; bm.fillRect(cx - 64 * S, cy + 8 * S, 56 * S, 56 * S); // parking garage block
+  bm.fillStyle = '#fff'; bm.font = 'bold 17px sans-serif'; bm.textAlign = 'center';
+  bm.fillText('🌳 PARK', cx + 36 * S, cy + 40 * S);
+  bm.fillText('🅿️ GARAGE ↓', cx + 108 * S, cy + 40 * S);
+  bm.fillText('🅿️ PARKING', cx - 36 * S, cy + 40 * S);
+  const dot = (x, z, col, r) => { bm.fillStyle = col; bm.beginPath(); bm.arc(cx + x * S, cy + z * S, r, 0, 7); bm.fill(); };
+  const flashRB = Math.floor(now / 280) % 2 ? '#ef4444' : '#3b82f6';
+  for (const c of cars) {
+    if (c === playerCar && mode === 'drive') continue;
+    if (c.kind === 'cop') dot(c.mesh.position.x, c.mesh.position.z, flashRB, 5);
+    else dot(c.mesh.position.x, c.mesh.position.z, '#9ca3af', 3.5);
+  }
+  if (heli) dot(heliSpot.x, heliSpot.z, '#facc15', 5);
+  for (const r of remotes.values()) {
+    if (r.hideName) continue; // stealth stays stealthy here too
+    dot(r.gx, r.gz, r.copRole ? flashRB : '#22d3ee', 6);
+  }
+  // you-are-here arrow
+  const anchor = mode === 'drive' && playerCar ? playerCar.mesh.position : char.position;
+  const ang = mode === 'drive' && playerCar ? playerCar.angle : charAngle;
+  const px = cx + anchor.x * S, py = cy + anchor.z * S;
+  const a2 = Math.atan2(-Math.cos(ang), -Math.sin(ang));
+  bm.save(); bm.translate(px, py); bm.rotate(a2);
+  bm.fillStyle = '#fff'; bm.strokeStyle = '#000'; bm.lineWidth = 2;
+  bm.beginPath(); bm.moveTo(11, 0); bm.lineTo(-8, -7); bm.lineTo(-8, 7); bm.closePath(); bm.fill(); bm.stroke();
+  bm.restore();
+  bm.fillStyle = 'rgba(255,255,255,.85)'; bm.font = 'bold 22px sans-serif'; bm.fillText('N', cx, 28);
+  bm.font = '15px sans-serif'; bm.fillText('tap the map or press M to close', cx, 920 - 16);
+}
+
 const phys = {};
 function syncKeys() {
   keys.w = !!phys.KeyW; keys.up = !!phys.ArrowUp;
@@ -2188,6 +2251,7 @@ addEventListener('keydown', e => {
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
   phys[e.code] = true; syncKeys();
   if (e.code === 'KeyF' && state === 'play') { if (mode === 'drive') exitCar(); else enterCar(); }
+  if (e.code === 'KeyM') toggleMap();
   if ((e.code === 'Space' || e.code === 'Enter') && state !== 'play') start();
 });
 addEventListener('keyup', e => { phys[e.code] = false; syncKeys(); });
