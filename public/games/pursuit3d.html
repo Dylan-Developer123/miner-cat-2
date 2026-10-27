@@ -73,6 +73,7 @@
 </div>
 <div class="keys-help">🚗 Drive: <b>W A S D</b> / arrows · <b>Space</b> = handbrake drift · <b>F</b> = get out / steal a car<br>🚶 On foot: <b>WASD</b> move · <b>Shift</b> sprint · <b>F</b> hop in the nearest car — even a cop car 😏</div>
 <button class="action" id="restart">▶ Start</button>
+<button class="action" id="mpBtn" style="background:#2563eb">🌐 Multiplayer: OFF</button>
 <div id="acct"></div>
 <div id="lb"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -894,7 +895,7 @@ function addCar(color, x, z, angle, kind, opts = {}) {
   mesh.rotation.y = angle;
   scene.add(mesh);
   const car = {
-    id: carId++, mesh, kind, // 'traffic' | 'cop' | 'parked'
+    id: carId++, mesh, kind, colorHex: color, // 'traffic' | 'cop' | 'parked'
     angle, vx: 0, vz: 0, steerVis: 0,
     speed: 0, targetSpeed: 0, spin: 0, dead: false, steerCur: 0, officerOut: false, pedalT: 0, pedalB: 0, gear: 1, shiftT: 0, prevVF: 0, longA: 0, wheelspin: false, skid: false, power: opts.power || 1, airborne: false, vyAir: 0, airTime: 0, groundVy: 0, lastGy: 0, climbVy: 0,
     ai: { axis: opts.axis || 'z', dir: opts.dir || -1, lane: opts.lane || 0, turnT: 2 + Math.random() * 5, panic: 0, stuck: 0 },
@@ -1579,6 +1580,7 @@ const wantedFromHeat = h => h <= 0 ? 0 : h < 55 ? 1 : h < 125 ? 2 : h < 225 ? 3 
 let peakWanted = 0, copSpawnT = 0;
 function fmtTime(s) { return Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0'); }
 function gameOver(kind) {
+  mpEvent(kind);
   releaseAllTch();
   if (state !== 'play') return;
   state = 'over';
@@ -1665,6 +1667,7 @@ function minimap(now) {
     else dot(c.mesh.position.x, c.mesh.position.z, '#9ca3af', 2);
   }
   if (heli) dot(heliSpot.x, heliSpot.z, '#facc15', 3);
+  for (const r of remotes.values()) dot(r.gx, r.gz, '#22d3ee', 3.5);
   // player arrow
   const ang = mode === 'drive' && playerCar ? playerCar.angle : charAngle;
   const F = { x: -Math.sin(ang), z: -Math.cos(ang) };
@@ -1877,6 +1880,7 @@ function animate() {
       return true;
     });
     hud();
+    mpTick(dt); updateRemotes(dt);
     minimap(now);
   }
   // ---------- camera ----------
@@ -1929,6 +1933,150 @@ function syncTouch() {
   $('touchDrive').classList.toggle('on', touch && mode === 'drive');
   $('touchFoot').classList.toggle('on', touch && mode === 'foot');
 }
+// ============================== MULTIPLAYER ==============================
+let mpWs = null, mpOn = false, mpSendT = 0;
+const remotes = new Map();
+function tagPrefix(tags) {
+  if (!tags) return '';
+  return (tags.owner ? '👑' : '') + (tags.admin ? '🛠️' : '') + (tags.moderator ? '🛡️' : '') + (tags.developer ? '💻' : '');
+}
+function makeNameSprite(name, tags) {
+  const cv = document.createElement('canvas'); cv.width = 256; cv.height = 56;
+  const c = cv.getContext('2d');
+  c.font = 'bold 25px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+  const label = (tagPrefix(tags) ? tagPrefix(tags) + ' ' : '') + name;
+  c.lineWidth = 6; c.strokeStyle = 'rgba(0,0,0,.85)'; c.strokeText(label, 128, 28);
+  c.fillStyle = '#fff'; c.fillText(label, 128, 28);
+  const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthWrite: false }));
+  spr.scale.set(6.6, 1.45, 1);
+  return spr;
+}
+function spawnRemote(id, displayName, tags) {
+  let r = remotes.get(id);
+  if (r) return r;
+  const group = new THREE.Group();
+  const carMesh = makeCarMesh(0x3b82f6, { premium: true });
+  const pedMesh = makePedMesh(0x2563eb, 0x1f2937);
+  const nameSpr = makeNameSprite(displayName || 'Player', tags);
+  group.add(carMesh); group.add(pedMesh); group.add(nameSpr);
+  scene.add(group);
+  r = { id, group, carMesh, pedMesh, nameSpr, mode: 'drive', tx: 0, ty: 0, tz: 0, ta: 0, gx: 0, gy: 0, gz: 0, ga: 0, px: 0, pz: 0, color: null, phase: 0, mv: 0, seen: false };
+  remotes.set(id, r);
+  return r;
+}
+function removeRemote(id) {
+  const r = remotes.get(id);
+  if (!r) return;
+  scene.remove(r.group);
+  remotes.delete(id);
+}
+function setRemoteState(r, st) {
+  if (!st) return;
+  r.mode = st.mode === 'foot' ? 'foot' : 'drive';
+  r.tx = +st.x || 0; r.ty = +st.y || 0; r.tz = +st.z || 0; r.ta = +st.a || 0; r.mv = st.mv ? 1 : 0;
+  if (!r.seen) { r.gx = r.tx; r.gy = r.ty; r.gz = r.tz; r.ga = r.ta; r.px = r.gx; r.pz = r.gz; r.seen = true; }
+  if (r.mode === 'drive' && st.c && st.c !== r.color) {
+    r.color = st.c;
+    const nm = makeCarMesh(st.c, { premium: true });
+    r.group.remove(r.carMesh); r.carMesh = nm; r.group.add(nm);
+  }
+}
+function updateRemotes(dt) {
+  if (!remotes.size) return;
+  const k = 1 - Math.exp(-11 * dt);
+  for (const r of remotes.values()) {
+    r.gx += (r.tx - r.gx) * k; r.gy += (r.ty - r.gy) * k; r.gz += (r.tz - r.gz) * k;
+    r.ga += wrapA(r.ta - r.ga) * k;
+    r.group.position.set(r.gx, r.gy, r.gz);
+    const driving = r.mode === 'drive';
+    r.carMesh.visible = driving; r.pedMesh.visible = !driving;
+    r.carMesh.rotation.y = r.ga;
+    r.pedMesh.rotation.y = r.ga;
+    r.nameSpr.position.y = driving ? 2.55 : 2.35;
+    if (!driving) {
+      if (r.mv) r.phase += dt * 9;
+      animatePerson(r.pedMesh, r.phase, r.mv ? 1 : 0.15);
+    } else if (r.carMesh.userData.wheels) {
+      const wspd = Math.hypot(r.gx - r.px, r.gz - r.pz) / Math.max(dt, 0.001);
+      for (const w of r.carMesh.userData.wheels) w.rotation.x += wspd * dt / 0.37;
+    }
+    r.px = r.gx; r.pz = r.gz;
+    // bump into remote players' cars instead of driving through them
+    if (driving && mode === 'drive' && playerCar && state === 'play') {
+      const pp = playerCar.mesh.position;
+      const dx = pp.x - r.gx, dz = pp.z - r.gz, d2 = dx * dx + dz * dz;
+      if (d2 < 2.3 * 2.3 && d2 > 0.0001 && Math.abs(pp.y - r.gy) < 3) {
+        const d = Math.sqrt(d2), push = 2.3 - d;
+        pp.x += dx / d * push; pp.z += dz / d * push;
+        const vn = playerCar.vx * (dx / d) + playerCar.vz * (dz / d);
+        if (vn < 0) { playerCar.vx -= vn * (dx / d); playerCar.vz -= vn * (dz / d); }
+      }
+    }
+  }
+}
+function mpUi() {
+  $('mpBtn').textContent = mpOn ? '🌐 Multiplayer: ON (' + (remotes.size + 1) + ' in the city) — tap to leave' : '🌐 Multiplayer: OFF';
+  $('mpBtn').style.background = mpOn ? '#16a34a' : '#2563eb';
+}
+function mpEvent(kind) {
+  if (mpOn && mpWs && mpWs.readyState === 1) { try { mpWs.send(JSON.stringify({ t: 'pevent', kind })); } catch (e) {} }
+}
+function mpTick(dt) {
+  if (!mpOn || !mpWs || mpWs.readyState !== 1) return;
+  mpSendT -= dt;
+  if (mpSendT > 0) return;
+  mpSendT = 0.09;
+  let st = null;
+  if (mode === 'drive' && playerCar) {
+    const pp = playerCar.mesh.position;
+    st = { t: 'ppos', mode: 'drive', x: +pp.x.toFixed(2), y: +pp.y.toFixed(2), z: +pp.z.toFixed(2), a: +playerCar.angle.toFixed(3), c: playerCar.colorHex || 0xe11d48, mv: 0 };
+  } else if (char) {
+    const pp = char.position;
+    st = { t: 'ppos', mode: 'foot', x: +pp.x.toFixed(2), y: +pp.y.toFixed(2), z: +pp.z.toFixed(2), a: +charAngle.toFixed(3), c: 0, mv: charBlend > 0.15 ? 1 : 0 };
+  }
+  if (st) { try { mpWs.send(JSON.stringify(st)); } catch (e) {} }
+}
+function mpConnect() {
+  if (mpWs) { try { mpWs.close(); } catch (e) {} return; }
+  $('mpBtn').textContent = '🌐 Connecting…';
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const ws = new WebSocket(proto + '//' + location.host + '/ws?game=pursuit');
+  mpWs = ws;
+  ws.onmessage = ev => {
+    let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+    if (m.t === 'pwelcome') {
+      mpOn = true;
+      for (const pl of m.players) { const r = spawnRemote(pl.id, pl.displayName, pl.tags); if (pl.state) setRemoteState(r, pl.state); }
+      mpUi();
+      flash('🌐 Multiplayer ON — ' + (m.players.length + 1) + ' in the city');
+    } else if (m.t === 'pjoin') {
+      const r = spawnRemote(m.player.id, m.player.displayName, m.player.tags);
+      if (m.player.state) setRemoteState(r, m.player.state);
+      flash('🌐 ' + m.player.displayName + ' joined the city');
+      mpUi();
+    } else if (m.t === 'ppos') {
+      let r = remotes.get(m.id);
+      if (!r) r = spawnRemote(m.id, m.displayName, m.tags);
+      setRemoteState(r, m);
+    } else if (m.t === 'pleave') {
+      removeRemote(m.id);
+      flash('👋 A player left the city');
+      mpUi();
+    } else if (m.t === 'pevent') {
+      flash(m.kind === 'busted' ? '🚔 ' + m.displayName + ' got BUSTED!' : '💥 ' + m.displayName + ' got WASTED!');
+    }
+  };
+  ws.onclose = ev => {
+    if (mpWs === ws) mpWs = null;
+    mpOn = false;
+    for (const id of [...remotes.keys()]) removeRemote(id);
+    mpUi();
+    if (ev.code === 4001) $('msg').textContent = '🌐 Multiplayer needs an account — sign in on the Arqade home page first, then tap Multiplayer again.';
+  };
+  ws.onerror = () => { try { ws.close(); } catch (e) {} };
+}
+$('mpBtn').onclick = mpConnect;
+
 const phys = {};
 function syncKeys() {
   keys.w = !!phys.KeyW; keys.up = !!phys.ArrowUp;
