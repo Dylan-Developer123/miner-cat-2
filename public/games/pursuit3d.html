@@ -253,7 +253,9 @@ function hillHeight(x, z) {
   return h * Math.min(1, Math.max(0, (m - (CITY - 30)) / 60));
 }
 function groundHeightAt(x, z) {
-  let gy = hillHeight(x, z);
+  const gh = garageHeight(x, z);
+  if (gh !== null) return gh;
+  let gy = Math.max(hillHeight(x, z), cityHillHeight(x, z));
   for (const r of RAMPS) {
     const dx = x - r.x, dz = z - r.z;
     const fx = -Math.sin(r.angle), fz = -Math.cos(r.angle);
@@ -411,6 +413,110 @@ function makeBuilding(cx, cz, b) {
   colliders.push({ x1: bx - w / 2, z1: bz - d / 2, x2: bx + w / 2, z2: bz + d / 2 });
 }
 
+const CITY_HILL = { x: 36, z: 36, r: 27, h: 3.4, rs: 0 };
+CITY_HILL.rs = (CITY_HILL.r * CITY_HILL.r + CITY_HILL.h * CITY_HILL.h) / (2 * CITY_HILL.h);
+function cityHillHeight(x, z) {
+  const dx = x - CITY_HILL.x, dz = z - CITY_HILL.z;
+  const d2 = dx * dx + dz * dz;
+  if (d2 >= CITY_HILL.r * CITY_HILL.r) return 0;
+  return Math.sqrt(CITY_HILL.rs * CITY_HILL.rs - d2) - (CITY_HILL.rs - CITY_HILL.h);
+}
+const GAR = { x1: 102, x2: 134, z1: 12, z2: 60, floor: -7, ex1: 80, ex2: 102, ez1: 30.5, ez2: 41.5 };
+function garageHeight(x, z) {
+  if (z > GAR.ez1 && z < GAR.ez2 && x >= GAR.ex1 && x < GAR.ex2) return GAR.floor * (x - GAR.ex1) / (GAR.ex2 - GAR.ex1);
+  if (x >= GAR.x1 && x <= GAR.x2 && z >= GAR.z1 && z <= GAR.z2) return GAR.floor;
+  return null;
+}
+function parkingTexture() {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 256;
+  const x = c.getContext('2d');
+  x.fillStyle = '#26282e'; x.fillRect(0, 0, 256, 256);
+  x.fillStyle = 'rgba(255,255,255,0.05)';
+  for (let i = 0; i < 260; i++) x.fillRect(Math.random() * 256, Math.random() * 256, 2, 2);
+  x.strokeStyle = 'rgba(240,240,240,0.55)'; x.lineWidth = 3;
+  for (let px = 32; px < 256; px += 64) { x.beginPath(); x.moveTo(px, 8); x.lineTo(px, 104); x.stroke(); }
+  x.strokeStyle = 'rgba(245,197,66,0.7)';
+  x.beginPath(); x.moveTo(0, 200); x.lineTo(256, 200); x.stroke();
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(3, 4);
+  return t;
+}
+function buildGarage() {
+  const conc = new THREE.MeshStandardMaterial({ color: 0x3a3f47, roughness: 0.95 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x22242a, roughness: 1 });
+  // entrance ramp surface: street level down to the garage floor
+  const rampLen = Math.hypot(GAR.ex2 - GAR.ex1, -GAR.floor);
+  const ramp = new THREE.Mesh(new THREE.BoxGeometry(rampLen + 1, 0.3, GAR.ez2 - GAR.ez1),
+    new THREE.MeshStandardMaterial({ color: 0x2e3138, roughness: 0.95 }));
+  ramp.rotation.z = -Math.atan2(-GAR.floor, GAR.ex2 - GAR.ex1);
+  ramp.position.set((GAR.ex1 + GAR.ex2) / 2, GAR.floor / 2 - 0.16, 36);
+  ramp.receiveShadow = true; scene.add(ramp);
+  // corridor retaining walls
+  for (const wz of [GAR.ez1 - 0.6, GAR.ez2 + 0.6]) {
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(27, 8.4, 1.2), conc);
+    wall.position.set(91, -3.3, wz); wall.castShadow = true; scene.add(wall);
+  }
+  // floor, ceiling, shell
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(46, 54), new THREE.MeshStandardMaterial({ map: parkingTexture(), roughness: 0.95 }));
+  floor.rotation.x = -Math.PI / 2; floor.position.set(117, GAR.floor + 0.02, 36); floor.receiveShadow = true; scene.add(floor);
+  const ceil = new THREE.Mesh(new THREE.BoxGeometry(50, 0.5, 56), dark);
+  ceil.position.set(117, -0.78, 36); ceil.castShadow = true; scene.add(ceil);
+  const mkWall = (w, d, x, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, 6.2, d), conc); m.position.set(x, -3.9, z); scene.add(m); };
+  mkWall(36, 1.2, 117, 11.4); mkWall(36, 1.2, 117, 60.6); mkWall(1.2, 50, 134.6, 36);
+  mkWall(1.2, 17, 101.4, 21.5); mkWall(1.2, 17, 101.4, 50.5);
+  // pillars (solid) + ceiling light strips + warm point lights
+  for (const px of [110, 126]) for (const pz of [24, 48]) {
+    const pil = new THREE.Mesh(new THREE.BoxGeometry(1.4, 6.2, 1.4), conc);
+    pil.position.set(px, -3.9, pz); pil.castShadow = true; scene.add(pil);
+    colliders.push({ x1: px - 0.95, z1: pz - 0.95, x2: px + 0.95, z2: pz + 0.95 });
+    const strip = new THREE.Mesh(new THREE.BoxGeometry(6, 0.14, 0.8),
+      new THREE.MeshStandardMaterial({ color: 0x111111, emissive: 0xfff2cc, emissiveIntensity: 2.2 }));
+    strip.position.set(px, -1.12, pz); scene.add(strip);
+  }
+  for (const [lx, lz] of [[112, 24], [122, 48]]) {
+    const pl = new THREE.PointLight(0xffd9a0, 1.15, 44, 1.4);
+    pl.position.set(lx, -2.6, lz); scene.add(pl);
+  }
+  // interior wall colliders (surface cars are kept out by the plaza barriers)
+  colliders.push({ x1: 100, z1: 10.8, x2: 136, z2: 12 });
+  colliders.push({ x1: 100, z1: 60, x2: 136, z2: 61.2 });
+  colliders.push({ x1: 133.8, z1: 10.8, x2: 135, z2: 61.2 });
+  colliders.push({ x1: 100.8, z1: 10.8, x2: 102, z2: 30.5 });
+  colliders.push({ x1: 100.8, z1: 41.5, x2: 102, z2: 61.2 });
+  colliders.push({ x1: 78, z1: 29.2, x2: 103, z2: 30.5 });
+  colliders.push({ x1: 78, z1: 41.5, x2: 103, z2: 42.8 });
+}
+function buildGaragePlaza(cx, cz) {
+  buildGarage();
+  const conc = new THREE.MeshStandardMaterial({ color: 0x9aa0a8, roughness: 0.9 });
+  const hedge = new THREE.MeshStandardMaterial({ color: 0x1e5c26, roughness: 1 });
+  const runs = [
+    [108, 8.6, 58, true], [108, 63.4, 58, true], [135.4, 36, 56, false],
+    [80.6, 19, 22, false], [80.6, 53, 22, false]
+  ];
+  for (const [rx, rz, len, alongX] of runs) {
+    const n = Math.floor(len / 4.4);
+    for (let i = 0; i < n; i++) {
+      const off = -len / 2 + 2.2 + i * 4.4;
+      const m = new THREE.Mesh(new THREE.BoxGeometry(alongX ? 4 : 0.8, 0.95, alongX ? 0.8 : 4), i % 2 ? hedge : conc);
+      m.position.set(rx + (alongX ? off : 0), 0.48, rz + (alongX ? 0 : off));
+      m.castShadow = true; scene.add(m);
+    }
+    colliders.push(alongX
+      ? { x1: rx - len / 2, z1: rz - 0.6, x2: rx + len / 2, z2: rz + 0.6 }
+      : { x1: rx - 0.6, z1: rz - len / 2, x2: rx + 0.6, z2: rz + len / 2 });
+  }
+  const poleM = new THREE.MeshStandardMaterial({ color: 0x374151, roughness: 0.6, metalness: 0.6 });
+  for (const pz of [31.5, 40.5]) {
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 4.4, 8), poleM);
+    pole.position.set(82, 2.2, pz); scene.add(pole);
+  }
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(12, 3),
+    new THREE.MeshBasicMaterial({ map: makeSignTexture('PARKING', '#4dd8ff'), side: THREE.DoubleSide }));
+  sign.position.set(82, 4.6, 36); sign.rotation.y = -Math.PI / 2; scene.add(sign);
+  addTree(90, 14, true); addTree(128, 58, true);
+}
+
 function buildCity() {
   scene = new THREE.Scene();
   const skyTex = makeSkyTexture();
@@ -440,11 +546,23 @@ function buildCity() {
   sunLight.shadow.bias = -0.0006; sunLight.shadow.normalBias = 0.03;
   scene.add(sunLight); scene.add(sunLight.target);
   // surrounding bay (water) + city ground
-  const water = new THREE.Mesh(new THREE.PlaneGeometry(2400, 2400), new THREE.MeshStandardMaterial({ color: 0x11395e, roughness: 0.12, metalness: 0.6, envMapIntensity: 1.2 }));
-  water.rotation.x = -Math.PI / 2; water.position.y = -0.4; scene.add(water);
-  const swTex = sidewalkTexture(); swTex.repeat.set(30, 30);
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(CITY * 2 + ROAD_W, CITY * 2 + ROAD_W), new THREE.MeshStandardMaterial({ map: swTex, roughness: 1 }));
-  ground.rotation.x = -Math.PI / 2; ground.position.y = -0.06; ground.receiveShadow = true; scene.add(ground);
+  const waterMat = new THREE.MeshStandardMaterial({ color: 0x11395e, roughness: 0.12, metalness: 0.6, envMapIntensity: 1.2 });
+  const WB = CITY + 14, WOUT = 1250; // water as a frame around the island — never under the city (the garage lives there)
+  const mkWater = (w, d, x, z) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), waterMat); m.rotation.x = -Math.PI / 2; m.position.set(x, -0.4, z); scene.add(m); };
+  mkWater(WOUT * 2, WOUT - WB, 0, -(WB + (WOUT - WB) / 2));
+  mkWater(WOUT * 2, WOUT - WB, 0, WB + (WOUT - WB) / 2);
+  mkWater(WOUT - WB, WB * 2, -(WB + (WOUT - WB) / 2), 0);
+  mkWater(WOUT - WB, WB * 2, WB + (WOUT - WB) / 2, 0);
+  const swTex = sidewalkTexture(); swTex.repeat.set(0.057, 0.057);
+  const gShape = new THREE.Shape();
+  const GE = CITY + ROAD_W / 2;
+  gShape.moveTo(-GE, -GE); gShape.lineTo(GE, -GE); gShape.lineTo(GE, GE); gShape.lineTo(-GE, GE); gShape.closePath();
+  const gHole = new THREE.Path(); // garage entrance cut-out (shape Y maps to world -Z): world x 78..104, z 29..43
+  gHole.moveTo(78, -43); gHole.lineTo(104, -43); gHole.lineTo(104, -29); gHole.lineTo(78, -29); gHole.closePath();
+  gShape.holes.push(gHole);
+  const groundGeo = new THREE.ShapeGeometry(gShape); groundGeo.rotateX(-Math.PI / 2);
+  const ground = new THREE.Mesh(groundGeo, new THREE.MeshStandardMaterial({ map: swTex, roughness: 1 }));
+  ground.position.y = -0.06; ground.receiveShadow = true; scene.add(ground);
   // rolling countryside: one sculpted terrain sheet, dug flat under the city
   const terrGeo = new THREE.PlaneGeometry(1500, 1500, 100, 100);
   terrGeo.rotateX(-Math.PI / 2);
@@ -453,6 +571,7 @@ function buildCity() {
     const vx = tp.getX(i), vz = tp.getZ(i);
     let vy = hillHeight(vx, vz) - 0.08;
     if (Math.abs(vx) < CITY + 10 && Math.abs(vz) < CITY + 10) vy = -0.35;
+    if (vx > 72 && vx < 108 && vz > 24 && vz < 48) vy = -8.5; // garage void under the entrance
     tp.setY(i, vy);
   }
   terrGeo.computeVertexNormals();
@@ -506,6 +625,7 @@ function buildCity() {
   for (let bi = -GRID; bi < GRID; bi++) for (let bj = -GRID; bj < GRID; bj++) {
     const cx = roadCoord(bi) + PITCH / 2, cz = roadCoord(bj) + PITCH / 2;
     if (bi === 0 && bj === 0) { makePark(cx, cz); continue; }
+    if (bi === 1 && bj === 0) { buildGaragePlaza(cx, cz); continue; }
     const n = 1 + Math.floor(Math.random() * 3);
     for (let b = 0; b < n; b++) makeBuilding(cx, cz, b);
     sprinkleProps(cx, cz);
@@ -520,7 +640,7 @@ function buildCity() {
   addRamp(-68, 30, Math.PI);
   addRamp(120, -68, -Math.PI / 2);
   addRamp(-160, 76, Math.PI / 2);
-  addRamp(36, 36, Math.PI * 0.75);
+  addRamp(-30, 144, Math.PI / 2);
   // distant skyline silhouettes on the horizon
   const silMat = new THREE.MeshBasicMaterial({ color: 0x12141f });
   for (let i = 0; i < 30; i++) {
@@ -554,7 +674,17 @@ function buildCity() {
 function makePark(cx, cz) {
   const g = new THREE.Mesh(new THREE.PlaneGeometry(BLOCK, BLOCK), new THREE.MeshStandardMaterial({ color: 0x24511f, roughness: 1 }));
   g.rotation.x = -Math.PI / 2; g.position.set(cx, 0.03, cz); g.receiveShadow = true; scene.add(g);
-  for (let i = 0; i < 10; i++) addTree(cx + (Math.random() - 0.5) * (BLOCK - 10), cz + (Math.random() - 0.5) * (BLOCK - 10), true);
+  // the park hill: a smooth grass mound you can drive up and launch off
+  const thetaMax = Math.acos((CITY_HILL.rs - CITY_HILL.h) / CITY_HILL.rs);
+  const mound = new THREE.Mesh(
+    new THREE.SphereGeometry(CITY_HILL.rs, 40, 20, 0, Math.PI * 2, 0, thetaMax),
+    new THREE.MeshStandardMaterial({ color: 0x2a5c22, roughness: 1 }));
+  mound.position.set(cx, -(CITY_HILL.rs - CITY_HILL.h), cz);
+  mound.receiveShadow = true; scene.add(mound);
+  for (let i = 0; i < 10; i++) {
+    const tx = cx + (Math.random() - 0.5) * (BLOCK - 10), tz = cz + (Math.random() - 0.5) * (BLOCK - 10);
+    addTree(tx, tz, true, groundHeightAt(tx, tz));
+  }
 }
 function addTree(x, z, inPark, gy) {
   const g = new THREE.Group();
@@ -1145,7 +1275,7 @@ function updatePeds(dt) {
       ped.x += mvx * spd * dt; ped.z += mvz * spd * dt;
       if (mvx || mvz) ped.angle = Math.atan2(-mvx, -mvz);
       ped.phase += dt * spd * 2.4;
-      ped.mesh.position.y = Math.abs(Math.sin(ped.phase)) * 0.07;
+      ped.mesh.position.y = groundHeightAt(ped.x, ped.z) + Math.abs(Math.sin(ped.phase)) * 0.07;
       animatePerson(ped.mesh, ped.phase, ped.state === 'flee' ? 1.45 : 1);
     }
     // car hit
@@ -1344,6 +1474,7 @@ const wantedFromHeat = h => h <= 0 ? 0 : h < 55 ? 1 : h < 125 ? 2 : h < 225 ? 3 
 let peakWanted = 0, copSpawnT = 0;
 function fmtTime(s) { return Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0'); }
 function gameOver(kind) {
+  releaseAllTch();
   if (state !== 'play') return;
   state = 'over';
   const ov = $('bigOverlay');
@@ -1364,6 +1495,9 @@ function reset() {
   topSpeed = 0; driftTime = 0; trafficTimer = 0; pedTimer = 0; copSpawnT = 0; seenByCop = false;
   mode = 'drive';
   playerCar = addCar(0xe11d48, 3.4, 40, 0, 'parked', { spoiler: true, premium: true, power: 1.04 });
+  addCar(0x60a5fa, 109, 16.5, Math.PI, 'parked');
+  addCar(0xf8fafc, 118, 16.5, Math.PI, 'parked');
+  addCar(0x34d399, 127, 16.5, Math.PI, 'parked');
   if (char) scene.remove(char);
   char = makePedMesh(0xfacc15, 0x374151, { skin: 0xe0ac69, hair: 0x2b2118 });
   char.visible = false;
@@ -1446,6 +1580,7 @@ function animate() {
     if (c.mesh.userData.blue) c.mesh.userData.blue.material.color.setHex(phase ? 0x112255 : 0x2266ff);
   }
   if (flashT > 0) { flashT -= dt; if (flashT <= 0) $('flashmsg').style.opacity = 0; }
+  if (state !== 'play' && tchOwners.size) releaseAllTch();
   const anchor = mode === 'drive' && playerCar ? playerCar.mesh.position : (char ? char.position : { x: 0, z: 0 });
   if (state === 'play') {
     elapsed += dt;
@@ -1648,6 +1783,7 @@ function animate() {
 }
 // ============================== INPUT ==============================
 function syncTouch() {
+  releaseAllTch(); // a cluster hiding mid-hold must never leave a steer flag stuck on
   const touch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
   $('touchDrive').classList.toggle('on', touch && mode === 'drive');
   $('touchFoot').classList.toggle('on', touch && mode === 'foot');
@@ -1690,7 +1826,11 @@ function hold(id, set) {
 }
 window.addEventListener('pointerup', e => { const f = tchOwners.get(e.pointerId); if (f) { f(); tchOwners.delete(e.pointerId); } });
 window.addEventListener('pointercancel', e => { const f = tchOwners.get(e.pointerId); if (f) { f(); tchOwners.delete(e.pointerId); } });
-window.addEventListener('blur', () => { for (const f of tchOwners.values()) f(); tchOwners.clear(); });
+function releaseAllTch() { for (const f of tchOwners.values()) f(); tchOwners.clear(); }
+window.addEventListener('blur', releaseAllTch);
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { releaseAllTch(); for (const k in phys) phys[k] = false; syncKeys(); }
+});
 function tap(id, fn) {
   $(id).addEventListener('pointerdown', e => { e.preventDefault(); if (state === 'play') fn(); });
 }
