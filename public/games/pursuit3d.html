@@ -83,6 +83,12 @@
 <button class="action" id="mapBtn" style="background:#0e7490">🗺️ Full Map</button>
 <div id="acct"></div>
 <div id="lb"></div>
+<script>
+window.addEventListener('error', function (e) {
+  var m = document.getElementById('msg');
+  if (m && !window.__errShown) { window.__errShown = 1; m.textContent = '⚠️ Game error: ' + (e.message || 'unknown') + ' — screenshot this for Baxter!'; }
+});
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 const $ = id => document.getElementById(id);
