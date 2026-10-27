@@ -118,8 +118,8 @@ function makeBuilding(cx, cz, b) {
   // blocks get nudged inland, shrunk to fit, or skipped: no towers on the beach
   const fits = (px, pz) => {
     const m = 1.5;
-    return inIsland(px - w / 2 - m, pz - d / 2 - m) && inIsland(px + w / 2 + m, pz - d / 2 - m) &&
-           inIsland(px - w / 2 - m, pz + d / 2 + m) && inIsland(px + w / 2 + m, pz + d / 2 + m);
+    const cs = [[px - w / 2 - m, pz - d / 2 - m], [px + w / 2 + m, pz - d / 2 - m], [px - w / 2 - m, pz + d / 2 + m], [px + w / 2 + m, pz + d / 2 + m]];
+    return cs.every(c => inIsland(c[0], c[1]) && distToPaths(c[0], c[1]) > 4); // on land AND off the curved roads
   };
   let bx = null, bz = null;
   for (let t = 0; t < 10 && bx === null; t++) {
