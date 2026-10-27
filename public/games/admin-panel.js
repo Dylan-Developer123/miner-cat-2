@@ -20,6 +20,9 @@
   #arq-admin button.danger { border-color: #d9534f; color: #a33; }
   #arq-admin input, #arq-admin select { flex: 1; min-width: 0; background: #12121c; color: #eee; border: 1px solid #55557a; border-radius: 8px; padding: 7px 9px; font-size: 13.5px; }
   #arq-admin #arq-status { font-size: 13px; min-height: 18px; margin-top: 8px; color: #ffd95e; }
+  #arq-admin .game-row { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+  #arq-admin .game-row span { flex: 1; font-size: 13.5px; }
+  #arq-admin .game-row button { padding: 5px 9px; font-size: 12.5px; }
   #arq-admin .close { float: right; background: none; border: none; color: #eee; font-size: 17px; cursor: pointer; padding: 0 2px; }
   `;
   const style = document.createElement('style');
@@ -37,8 +40,8 @@
   panel.innerHTML = `
     <button class="close" title="Close">✕</button>
     <h3>🔧 Admin panel</h3>
-    <div class="who">Signed in as <b></b> — changes apply to your Miner Cat account and the whole site.</div>
-    <h4>My Miner Cat account</h4>
+    <div class="who">Signed in as <b></b> — one account for the whole site. Each game has its own panel below.</div>
+    <h4>⛏️ Miner Cat 2</h4>
     <div class="row">
       <button data-cmd="coins">+1M coins</button>
       <button data-cmd="gems">+100 gems</button>
@@ -50,6 +53,22 @@
       <button data-cmd="achievements">All achievements</button>
       <button data-cmd="stage100">Go to stage 100</button>
     </div>
+    <div class="row" style="margin-top:8px;"><input id="arq-gift-user" placeholder="🎁 Gift to (username)"></div>
+    <div class="row">
+      <input id="arq-gift-coins" type="number" min="0" placeholder="🪙 Coins">
+      <input id="arq-gift-gems" type="number" min="0" placeholder="💎 Gems">
+      <button id="arq-gift-btn">🎁 Gift</button>
+    </div>
+    <div class="row" style="margin-top:8px;">
+      <input id="arq-reset" placeholder="Username to reset">
+      <button id="arq-reset-btn" class="danger">Reset progress</button>
+    </div>
+    <div class="row"><button id="arq-reset-self" class="danger">Reset MY progress</button></div>
+    <h4>🚓 City Pursuit 3D</h4>
+    <div id="arq-game-hooks"></div>
+    <div class="game-row"><span>🏆 My best cash haul</span><button data-score-game="pursuit3d">Reset</button></div>
+    <h4>🎮 More games — my best scores</h4>
+    <div id="arq-more-games"></div>
     <h4>Broadcast</h4>
     <div class="row">
       <input id="arq-broadcast" placeholder="Global message…" maxlength="500">
@@ -61,19 +80,6 @@
       <button id="arq-ban-btn" class="danger">Ban</button>
       <button id="arq-unban-btn">Unban</button>
     </div>
-    <h4>Gift coins / gems</h4>
-    <div class="row"><input id="arq-gift-user" placeholder="Friend's username"></div>
-    <div class="row">
-      <input id="arq-gift-coins" type="number" min="0" placeholder="🪙 Coins">
-      <input id="arq-gift-gems" type="number" min="0" placeholder="💎 Gems">
-      <button id="arq-gift-btn">🎁 Gift</button>
-    </div>
-    <h4>Reset progress</h4>
-    <div class="row">
-      <input id="arq-reset" placeholder="Username to reset">
-      <button id="arq-reset-btn" class="danger">Reset</button>
-    </div>
-    <div class="row"><button id="arq-reset-self" class="danger">Reset MY progress</button></div>
     ${user.canGiveTags ? `
     <h4>🏷️ Give / remove tags (owner)</h4>
     <div class="row">
@@ -106,14 +112,14 @@
     return d;
   }
 
-  btn.onclick = () => { panel.style.display = panel.style.display === 'none' ? 'block' : 'none'; };
+  btn.onclick = () => { renderHooks(); panel.style.display = panel.style.display === 'none' ? 'block' : 'none'; };
   panel.querySelector('.close').onclick = () => { panel.style.display = 'none'; };
 
   panel.querySelectorAll('[data-cmd]').forEach(b => {
     b.onclick = async () => {
       const cmd = b.dataset.cmd;
       const extra = cmd === 'coins' ? { amount: 1000000 } : cmd === 'gems' ? { amount: 100 } : cmd === 'upgrades' ? { pick: 50, armor: 50, bag: 50 } : {};
-      try { await admin(cmd, extra); status('✅ Admin power used — it applies to your Miner Cat account.'); }
+      try { await admin(cmd, extra); status('✅ Done — Miner Cat 2 updated.'); }
       catch (ex) { status('⚠️ ' + ex.message); }
     };
   });
@@ -166,6 +172,53 @@
     panel.querySelector('#arq-tag-grant').onclick = () => changeTag(true);
     panel.querySelector('#arq-tag-revoke').onclick = () => changeTag(false);
   }
+  const MORE_GAMES = [
+    ['🐍 Snake', 'snake'], ['🧱 Breakout', 'breakout'], ['🐤 Flappy Bird', 'flappy'],
+    ['🃏 Memory Match', 'memory'], ['🔢 2048', '2048'], ['🪙 Coin Clicker', 'clicker'],
+    ['🏓 Pong', 'pong'], ['💣 Minesweeper', 'minesweeper'], ['👾 Space Invaders', 'invaders'],
+    ['🌕 Lunar Lander', 'lander'], ['🏎️ Turbo Racer', 'racer'], ['🂡 Blackjack', 'blackjack'],
+    ['✏️ Word Guess', 'word'],
+  ];
+  const moreEl = panel.querySelector('#arq-more-games');
+  for (const [name, key] of MORE_GAMES) {
+    const row = document.createElement('div');
+    row.className = 'game-row';
+    row.innerHTML = '<span></span><button>Reset</button>';
+    row.querySelector('span').textContent = name;
+    row.querySelector('button').dataset.scoreGame = key;
+    moreEl.appendChild(row);
+  }
+  panel.querySelectorAll('[data-score-game]').forEach(b => {
+    b.onclick = async () => {
+      const game = b.dataset.scoreGame;
+      if (!confirm('Reset your best score in this game? Cannot be undone.')) return;
+      try { await admin('resetScore', { game }); status('🏆 Best score cleared — fresh start next game!'); }
+      catch (ex) { status('⚠️ ' + ex.message); }
+    };
+  });
+  // Live in-game powers: a game page can register window.ARQ_GAME_ADMIN = { actions: [{label, run}] }.
+  let hooksBuilt = false;
+  function renderHooks() {
+    if (hooksBuilt) return;
+    const hooks = window.ARQ_GAME_ADMIN;
+    const box = panel.querySelector('#arq-game-hooks');
+    if (!hooks || !Array.isArray(hooks.actions) || !hooks.actions.length) {
+      box.innerHTML = '<div class="who">Open this panel inside City Pursuit 3D for live powers (cash, wanted, repairs).</div>';
+      return;
+    }
+    hooksBuilt = true;
+    box.innerHTML = '';
+    const row = document.createElement('div');
+    row.className = 'row';
+    for (const a of hooks.actions) {
+      const b = document.createElement('button');
+      b.textContent = a.label;
+      b.onclick = () => { try { const m = a.run(); status(m || '✅ Done.'); } catch (ex) { status('⚠️ ' + ex.message); } };
+      row.appendChild(b);
+    }
+    box.appendChild(row);
+  }
+  renderHooks();
   panel.querySelector('#arq-wipe').onclick = async () => {
     if (!confirm('Delete ALL accounts and all saved progress? This cannot be undone.')) return;
     if (!confirm('Really wipe everything? You will be signed out.')) return;
