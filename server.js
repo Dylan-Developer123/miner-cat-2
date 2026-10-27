@@ -808,7 +808,7 @@ async function main() {
           me.state = {
             mode: msg.mode === 'foot' ? 'foot' : 'drive',
             x: +msg.x || 0, y: +msg.y || 0, z: +msg.z || 0, a: +msg.a || 0,
-            c: msg.c | 0, mv: msg.mv ? 1 : 0,
+            c: msg.c | 0, mv: msg.mv ? 1 : 0, hide: msg.hide ? 1 : 0,
           };
           toRoom({ t: 'ppos', id: userId, displayName: me.displayName, tags: me.tags, ...me.state }, userId);
         } else if (msg.t === 'pevent' && (msg.kind === 'busted' || msg.kind === 'wasted')) {
