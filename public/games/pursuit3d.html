@@ -114,7 +114,7 @@ let cash = 0, heat = 0, wanted = 0, health = 100, bustTimer = 0, seenByCop = fal
 let elapsed = 0, shake = 0, flashT = 0, submitted = false, heli = null, heliSpot = { x: 0, z: 0 };
 let smokePool = [], driftTime = 0, topSpeed = 0, sunLight = null, clouds = [], headlight = null, underLight = null, ceilMesh = null, groundMesh = null, terrMesh = null;
 // ============================== TEXTURES ==============================
-function buildingTexture(base, lit) {
+function buildingTexture(base, lit, rows, cols) {
   const cv = document.createElement('canvas'); cv.width = 256; cv.height = 512;
   const x = cv.getContext('2d');
   const ev = document.createElement('canvas'); ev.width = 256; ev.height = 512;
@@ -124,20 +124,21 @@ function buildingTexture(base, lit) {
   const shade = x.createLinearGradient(0, 0, 0, 512);
   shade.addColorStop(0, 'rgba(255,255,255,.10)'); shade.addColorStop(1, 'rgba(0,0,0,.30)');
   x.fillStyle = shade; x.fillRect(0, 0, 256, 512);
-  for (let r = 0; r < 13; r++) for (let c = 0; c < 6; c++) {
-    const wx = 14 + c * 40, wy = 14 + r * 30;
+  const ROWS = rows || 13, COLS = cols || 6, stepY = 404 / ROWS, stepX = 232 / COLS, ww = stepX * 0.62, wh = stepY * 0.58;
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+    const wx = 12 + c * stepX, wy = 12 + r * stepY;
     const isLit = Math.random() < lit;
-    x.fillStyle = 'rgba(0,0,0,.4)'; x.fillRect(wx - 2, wy - 2, 28, 21);
-    x.fillStyle = isLit ? '#ffd97a' : '#121a28'; x.fillRect(wx, wy, 24, 17);
-    x.fillStyle = 'rgba(0,0,0,.35)'; x.fillRect(wx + 11, wy, 2, 17);
-    if (isLit) { e.fillStyle = Math.random() < 0.5 ? '#ffc46b' : '#ffe2a0'; e.fillRect(wx, wy, 24, 17); }
+    x.fillStyle = 'rgba(0,0,0,.4)'; x.fillRect(wx - 2, wy - 2, ww + 4, wh + 4);
+    x.fillStyle = isLit ? '#ffd97a' : '#121a28'; x.fillRect(wx, wy, ww, wh);
+    x.fillStyle = 'rgba(0,0,0,.35)'; x.fillRect(wx + ww / 2 - 1, wy, 2, wh);
+    if (isLit) { e.fillStyle = Math.random() < 0.5 ? '#ffc46b' : '#ffe2a0'; e.fillRect(wx, wy, ww, wh); }
   }
   // storefront level: dark glass panels + a warm sign band
   x.fillStyle = '#0b1220'; x.fillRect(0, 428, 256, 84);
   for (let px = 6; px < 250; px += 34) { x.fillStyle = 'rgba(140,190,255,.20)'; x.fillRect(px, 438, 26, 66); }
   x.fillStyle = 'rgba(255,170,90,.85)'; x.fillRect(0, 428, 256, 5);
   e.fillStyle = 'rgba(255,150,70,.35)'; e.fillRect(0, 440, 256, 60);
-  const map = new THREE.CanvasTexture(cv); map.encoding = THREE.sRGBEncoding; map.anisotropy = 4;
+  const map = new THREE.CanvasTexture(cv); map.encoding = THREE.sRGBEncoding; map.anisotropy = 8;
   const glow = new THREE.CanvasTexture(ev); glow.encoding = THREE.sRGBEncoding;
   return { map, glow };
 }
@@ -251,7 +252,7 @@ function makeSignTexture(word, color) {
 const RAMPS = [];
 // Dylan's island: a hand-drawn bean/kidney outline (notch on the north shore,
 // dome to the east, lobe to the southwest), ocean all around. World coords [x, z].
-const ISLAND = [ [40,-420],[200,-395],[360,-300],[455,-140],[480,60],[420,250],[300,380],[130,445],[-60,450],[-235,395],[-370,290],[-455,130],[-480,-60],[-455,-230],[-370,-360],[-260,-395],[-165,-352],[-120,-330] ];
+const ISLAND = [ [45,-425],[205,-398],[372,-295],[468,-135],[492,55],[432,252],[310,385],[120,460],[-60,462],[-255,410],[-395,300],[-440,120],[-492,-40],[-470,-215],[-385,-330],[-285,-380],[-175,-300],[-110,-295],[-40,-350] ];
 function inIsland(x, z) {
   let inside = false;
   for (let i = 0, j = ISLAND.length - 1; i < ISLAND.length; j = i++) {
@@ -293,9 +294,18 @@ function landBlock(bi, bj) {
   if (bi < -GRID || bi >= GRID || bj < -GRID || bj >= GRID) return false;
   return inIsland(roadCoord(bi) + PITCH / 2, roadCoord(bj) + PITCH / 2);
 }
-function segLand(axis, k, j) { // does this road segment (intersection j -> j+1 on road k) touch land?
-  if (axis === 'v') return landBlock(k - 1, j) || landBlock(k, j);
-  return landBlock(j, k - 1) || landBlock(j, k);
+function segClear(axis, k, j) {
+  // a road segment only exists if its FULL width stays on dry land the whole way —
+  // sampled along its length, centreline and both edges, so no asphalt hangs over the sea
+  for (let q = 0; q <= 4; q++) {
+    const t = 0.06 + q * 0.22;
+    let x, z, px, pz;
+    if (axis === 'v') { x = roadCoord(k); z = roadCoord(j) + PITCH * t; px = 1; pz = 0; }
+    else { x = roadCoord(j) + PITCH * t; z = roadCoord(k); px = 0; pz = 1; }
+    const off = ROAD_W / 2 + 1.5;
+    if (!inIsland(x, z) || !inIsland(x + px * off, z + pz * off) || !inIsland(x - px * off, z - pz * off)) return false;
+  }
+  return true;
 }
 function shoreHeight(x, z) { // 0 on land, sloping seabed once you leave the shore
   if (inIsland(x, z)) return 0;
@@ -403,7 +413,7 @@ function makeBuilding(cx, cz, b) {
   const glassy = Math.random() < 0.3;
   const mat = glassy
     ? new THREE.MeshStandardMaterial({ map: tex.map, emissiveMap: tex.glow, emissive: 0xaad4ff, emissiveIntensity: 0.85, roughness: 0.22, metalness: 0.55, color: 0xcfe2f2 })
-    : new THREE.MeshStandardMaterial({ map: tex.map, emissiveMap: tex.glow, emissive: 0xffc37a, emissiveIntensity: 1.05, roughness: 0.88, metalness: 0.08 });
+    : new THREE.MeshStandardMaterial({ map: tex.map, emissiveMap: tex.glow, emissive: 0xffc37a, emissiveIntensity: 1.05, roughness: 0.88, metalness: 0.08, color: [0xffffff, 0xf3e9d6, 0xdfe7ee, 0xeeddcf, 0xe6e2d8][Math.floor(Math.random() * 5)] });
   const roofMat = new THREE.MeshStandardMaterial({ color: 0x23262d, roughness: 0.95 });
   const grp = new THREE.Group(); grp.position.set(bx, 0, bz);
   const style = Math.random();
@@ -879,20 +889,20 @@ async function buildCity() {
   for (let k = -GRID; k <= GRID; k++) {
     let runStart = -1;
     for (let j = -GRID; j <= GRID; j++) {
-      const land = j < GRID && segLand('v', k, j);
+      const land = j < GRID && segClear('v', k, j);
       if (land && runStart < 0) runStart = j;
       if ((!land || j === GRID) && runStart >= 0) {
-        const len = (j - runStart) * PITCH;
+        const len = (j - runStart) * PITCH + 0.6;
         const m = mkRoad(ROAD_W, len); m.position.set(roadCoord(k), 0.01, roadCoord(runStart) + len / 2); scene.add(m);
         runStart = -1;
       }
     }
     runStart = -1;
     for (let j = -GRID; j <= GRID; j++) {
-      const land = j < GRID && segLand('h', k, j);
+      const land = j < GRID && segClear('h', k, j);
       if (land && runStart < 0) runStart = j;
       if ((!land || j === GRID) && runStart >= 0) {
-        const len = (j - runStart) * PITCH;
+        const len = (j - runStart) * PITCH + 0.6;
         const m = mkRoadH(ROAD_W, len); m.position.set(roadCoord(runStart) + len / 2, 0.01, roadCoord(k)); scene.add(m);
         runStart = -1;
       }
@@ -901,14 +911,17 @@ async function buildCity() {
   // intersection patches (plain asphalt squares kill the double-line look)
   const patchMat = new THREE.MeshStandardMaterial({ map: crosswalkTexture(), roughness: 0.95 });
   for (let i = -GRID; i <= GRID; i++) for (let j = -GRID; j <= GRID; j++) {
-    if (!(landBlock(i - 1, j - 1) || landBlock(i, j - 1) || landBlock(i - 1, j) || landBlock(i, j))) continue;
-    const p = new THREE.Mesh(new THREE.PlaneGeometry(ROAD_W, ROAD_W), patchMat);
+    const anySeg = (j > -GRID && segClear('v', i, j - 1)) || (j < GRID && segClear('v', i, j)) ||
+                   (i > -GRID && segClear('h', j, i - 1)) || (i < GRID && segClear('h', j, i));
+    if (!anySeg) continue; // a junction only exists where real road segments meet
+    const p = new THREE.Mesh(new THREE.PlaneGeometry(ROAD_W + 0.5, ROAD_W + 0.5), patchMat);
     p.rotation.x = -Math.PI / 2; p.position.set(roadCoord(i), 0.02, roadCoord(j)); p.receiveShadow = true; scene.add(p);
   }
   // buildings on blocks (skip center-south block = park)
   FACES = [
     buildingTexture('#3a4152', 0.5), buildingTexture('#4a3f35', 0.4), buildingTexture('#35424e', 0.6),
-    buildingTexture('#463a52', 0.45), buildingTexture('#2f3a2e', 0.5)
+    buildingTexture('#463a52', 0.45), buildingTexture('#2f3a2e', 0.5),
+    buildingTexture('#5a3d33', 0.35, 9, 7), buildingTexture('#6b6f75', 0.55, 18, 5), buildingTexture('#2e4048', 0.65, 15, 7)
   ];
   for (let bi = -GRID; bi < GRID; bi++) for (let bj = -GRID; bj < GRID; bj++) {
     const cx = roadCoord(bi) + PITCH / 2, cz = roadCoord(bj) + PITCH / 2;
@@ -1207,11 +1220,14 @@ function addPed(x, z) {
   return ped;
 }
 function pickPedTarget(ped) {
-  // wander to a random point near a block edge (sidewalks)
-  const bx = roadCoord(Math.floor(Math.random() * (GRID * 2))) + PITCH / 2;
-  const bz = roadCoord(Math.floor(Math.random() * (GRID * 2))) + PITCH / 2;
-  ped.tx = bx + (Math.random() - 0.5) * (BLOCK + 6);
-  ped.tz = bz + (Math.random() - 0.5) * (BLOCK + 6);
+  // wander to a random point near a LAND block edge (sidewalks) — never out at sea
+  for (let t = 0; t < 8; t++) {
+    const bi = Math.floor(Math.random() * (GRID * 2)) - GRID, bj = Math.floor(Math.random() * (GRID * 2)) - GRID;
+    if (!landBlock(bi, bj)) continue;
+    ped.tx = roadCoord(bi) + PITCH / 2 + (Math.random() - 0.5) * (BLOCK + 6);
+    ped.tz = roadCoord(bj) + PITCH / 2 + (Math.random() - 0.5) * (BLOCK + 6);
+    break;
+  }
   ped.tx = Math.max(-CITY, Math.min(CITY, ped.tx));
   ped.tz = Math.max(-CITY, Math.min(CITY, ped.tz));
   if (!inIsland(ped.tx, ped.tz)) { ped.tx = ped.x + (36 - ped.x) * 0.4; ped.tz = ped.z + (36 - ped.z) * 0.4; }
@@ -1486,6 +1502,7 @@ function copInput(car, dt) {
   const tp = { x: target.x, z: target.z };
   if (mode === 'drive' && playerCar) { tp.x += playerCar.vx * 0.35; tp.z += playerCar.vz * 0.35; }
   const dist = Math.hypot(tp.x - p.x, tp.z - p.z);
+  if (!inIsland(p.x, p.z) && shoreHeight(p.x, p.z) < -0.7) { tp.x = 36; tp.z = 36; } // bogged in the sea? head back to dry land
   // ---- garage routing: use the entrance ramp instead of grinding on the walls ----
   const playerUnder = garageHeight(tp.x, tp.z) !== null;
   const copUnder = garageHeight(p.x, p.z) !== null;
@@ -1607,7 +1624,8 @@ function updatePeds(dt) {
         }
       }
     } else if (ped.state === 'dive') {
-      ped.x += (ped.dvx || 0) * dt; ped.z += (ped.dvz || 0) * dt;
+      const nx = ped.x + (ped.dvx || 0) * dt, nz = ped.z + (ped.dvz || 0) * dt;
+      if (inIsland(nx, nz) || shoreHeight(nx, nz) > -0.3) { ped.x = nx; ped.z = nz; }
       ped.mesh.position.y = Math.sin(Math.min(1, 0.65 - ped.timer + 0.65) * Math.PI) * 0.4;
       if (ped.timer <= 0) { ped.state = 'down'; ped.timer = 0.9; ped.mesh.rotation.x = 0.5; splayArms(ped.mesh); }
     } else if (ped.state === 'down') {
@@ -1616,7 +1634,10 @@ function updatePeds(dt) {
       if (ped.timer <= 0) { ped.state = 'flee'; ped.mesh.rotation.x = 0; pickPedTarget(ped); }
     }
     if (ped.state === 'walk' || ped.state === 'flee') {
-      ped.x += mvx * spd * dt; ped.z += mvz * spd * dt;
+      const nx = ped.x + mvx * spd * dt, nz = ped.z + mvz * spd * dt;
+      if (!inIsland(nx, nz) && shoreHeight(nx, nz) < -0.3) {
+        if (Math.random() < 0.08) pickPedTarget(ped); // the sea is not a sidewalk — turn back at the waterline
+      } else { ped.x = nx; ped.z = nz; }
       if (mvx || mvz) ped.angle = Math.atan2(-mvx, -mvz);
       ped.phase += dt * spd * 2.4;
       ped.mesh.position.y = groundHeightAt(ped.x, ped.z) + Math.abs(Math.sin(ped.phase)) * 0.07;
@@ -1689,8 +1710,8 @@ function updateOfficers(dt) {
     o.grabbing = o.state === 'chase' && mode === 'foot' && dPlayer < 1.7 && Math.abs(char.position.y - o.mesh.position.y) < 3;
     const dx = tx - o.x, dz = tz - o.z, dl = Math.hypot(dx, dz);
     if (dl > 0.05 && spd > 0) {
-      o.x += dx / dl * spd * dt;
-      o.z += dz / dl * spd * dt;
+      const nx = o.x + dx / dl * spd * dt, nz = o.z + dz / dl * spd * dt;
+      if (inIsland(nx, nz) || shoreHeight(nx, nz) > -0.3 || o.state === 'return') { o.x = nx; o.z = nz; } // cops don't swim — they hold the waterline
       o.angle = Math.atan2(-dx / dl, -dz / dl);
       o.phase += dt * spd * 1.85;
     }
@@ -2204,7 +2225,7 @@ function syncTouch() {
   $('touchFoot').classList.toggle('on', touch && mode === 'foot');
 }
 </script>
-<script src="/games/pursuit3d-b.js?v=4"></script>
+<script src="/games/pursuit3d-b.js?v=5"></script>
 <script src="/games/admin-panel.js"></script>
 </body>
 </html>
