@@ -360,7 +360,7 @@ hold('f-left', 'left');
 hold('f-right', 'right');
 hold('f-run', 'run');
 tap('f-enter', enterCar);
-$('restart').onclick = () => { if (!bootGame()) return; if (state === 'play') reset(); start(); };
+$('restart').onclick = async () => { if (!await bootGame()) return; if (state === 'play') reset(); start(); };
 // --- Site account (the Miner Cat account works everywhere) ---
 let ME = null;
 const esc = s => String(s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
@@ -379,23 +379,28 @@ async function submitScore(s) {
   $('acct').innerHTML = ME ? `👤 Playing as <b>${esc(ME.displayName)}</b> — your best cash haul saves to your account` : '👤 <a href="/miner-cat-2" style="color:#f5c542;">Sign in</a> to save scores to your account';
   loadLb();
 })();
-let booted = false, bootRetrySafe = false;
-function bootGame() {
+let booted = false, booting = false, bootRetrySafe = false, bootRetries = 0;
+async function bootGame() {
   if (booted) return true;
+  if (booting) return false;
   if (!window.THREE) return false;
+  booting = true;
   bootRetrySafe = false;
   try {
-    buildCity();
+    await buildCity();
     reset();
     syncTouch();
     animate();
     booted = true;
+    booting = false;
     return true;
   } catch (err) {
+    booting = false;
     // Only auto-retry when the 3D canvas never appeared (renderer creation failed);
     // retrying a half-built city could duplicate it.
     bootRetrySafe = !$('game3d').querySelector('canvas');
     $('msg').textContent = '⚠️ 3D could not start: ' + (err.message || err) + ' — tap Start to retry.';
+    if (bootRetrySafe && bootRetries < 2) { bootRetries++; setTimeout(() => bootGame(), 1800); }
     return false;
   }
 }
