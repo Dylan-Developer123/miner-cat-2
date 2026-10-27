@@ -249,6 +249,21 @@ function drawBigMap() {
     if (segClear('v', k, j)) bm.fillRect(cx + (roadCoord(k) - ROAD_W / 2) * S, cy + (roadCoord(j) - 1) * S, ROAD_W * S, (PITCH + 2) * S);
     if (segClear('h', k, j)) bm.fillRect(cx + (roadCoord(j) - 1) * S, cy + (roadCoord(k) - ROAD_W / 2) * S, (PITCH + 2) * S, ROAD_W * S);
   }
+  // superblocks (merged block pairs — no road through the middle)
+  bm.fillStyle = '#1e4620'; bm.fillRect(cx + 296 * S, cy + 80 * S, 56 * S, 128 * S); // big park
+  bm.fillStyle = '#7a5b23'; bm.fillRect(cx + 80 * S, cy - 208 * S, 128 * S, 56 * S); // mall
+  bm.fillStyle = '#5b6b7a'; bm.fillRect(cx - 136 * S, cy - 280 * S, 128 * S, 56 * S); // school
+  bm.fillStyle = '#8a6f45'; bm.fillRect(cx - 280 * S, cy - 136 * S, 56 * S, 128 * S); // big neighborhood
+  bm.font = 'bold 15px sans-serif'; bm.fillStyle = '#ffd95e'; bm.textAlign = 'center';
+  bm.fillText('🌳 BIG PARK', cx + 324 * S, cy + 148 * S);
+  bm.fillText('🛍️ MALL', cx + 144 * S, cy - 176 * S);
+  bm.fillText('🏫 SCHOOL', cx - 72 * S, cy - 248 * S);
+  // street names along the roads, like a real map
+  bm.fillStyle = 'rgba(255,255,255,.85)'; bm.font = 'bold 14px sans-serif';
+  for (let k = -GRID; k <= GRID; k++) {
+    if (segClear('v', k, -4)) { bm.save(); bm.translate(cx + roadCoord(k) * S, cy - 288 * S); bm.rotate(-Math.PI / 2); bm.fillText(STREET_V[k + 6].toUpperCase(), 0, 5); bm.restore(); }
+    if (segClear('h', k, -4)) bm.fillText(STREET_H[k + 6].toUpperCase(), cx - 288 * S, cy + roadCoord(k) * S + 5);
+  }
   bm.fillStyle = '#3f4a5a'; bm.fillRect(cx + 80 * S, cy + 8 * S, 56 * S, 56 * S); // underground garage block
   bm.fillStyle = '#5b4a2f'; bm.fillRect(cx - 64 * S, cy + 8 * S, 56 * S, 56 * S); // parking garage block
   const blk = (bx, bz, col) => { bm.fillStyle = col; bm.fillRect(cx + (bx - 28) * S, cy + (bz - 28) * S, 56 * S, 56 * S); };
