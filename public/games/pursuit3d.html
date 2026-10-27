@@ -147,7 +147,7 @@ function buildingTexture(base, lit, rows, cols) {
 function roadTextures() {
   const cv = document.createElement('canvas'); cv.width = 256; cv.height = 256;
   const x = cv.getContext('2d');
-  x.fillStyle = '#2e3136'; x.fillRect(0, 0, 256, 256);
+  x.fillStyle = '#3a4048'; x.fillRect(0, 0, 256, 256);
   for (let i = 0; i < 1000; i++) {
     x.fillStyle = `rgba(${140 + Math.random() * 60},${140 + Math.random() * 60},${150 + Math.random() * 60},${Math.random() * 0.13})`;
     x.fillRect(Math.random() * 256, Math.random() * 256, 1.6, 1.6);
@@ -163,7 +163,7 @@ function roadTextures() {
     x.stroke();
   }
   x.fillStyle = 'rgba(235,238,240,.92)'; x.fillRect(4, 0, 5, 256); x.fillRect(247, 0, 5, 256);
-  x.fillStyle = 'rgba(250,204,21,.92)'; x.fillRect(124, 12, 8, 54);
+  x.fillStyle = 'rgba(250,204,21,.95)'; x.fillRect(123, 8, 10, 64);
   const t = new THREE.CanvasTexture(cv);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.encoding = THREE.sRGBEncoding; t.anisotropy = 8;
@@ -298,7 +298,7 @@ function landBlock(bi, bj) {
 }
 const STREET_V = ['Palm Dr', 'Harbor Blvd', 'Magnolia St', 'Euclid St', 'Brookhurst St', 'Grand Ave', 'Main St', 'Flower St', 'Bristol St', 'Tustin Ave', 'Newport Blvd', 'Jamboree Rd', 'Culver Dr'];
 const STREET_H = ['Katella Ave', 'Cerritos Ave', 'Ball Rd', 'Lincoln Ave', 'La Palma Ave', 'Commonwealth Ave', 'Chapman Ave', 'Orangewood Ave', 'Garden Grove Blvd', 'Westminster Blvd', 'Bolsa Ave', 'Edinger Ave', 'Warner Ave'];
-const DEAD_SEGS = new Set(['h:2:4', 'v:2:-3', 'v:-1:-4', 'h:-1:-4']); // superblock interiors — no road through the middle
+const DEAD_SEGS = new Set(['h:2:4', 'v:2:-3', 'v:-1:-4', 'h:-1:-4', 'v:-4:-5', 'v:-4:-4', 'h:-5:-5', 'h:-5:-4', 'h:3:5', 'h:3:-3', 'v:3:4']); // superblock interiors — no road through the middle
 function segClear(axis, k, j) {
   if (DEAD_SEGS.has(axis + ':' + k + ':' + j)) return false;
   // a road segment only exists if its FULL width stays on dry land the whole way —
@@ -826,7 +826,7 @@ async function buildCity() {
       if (land && runStart === null) runStart = j;
       if ((!land || j === GRID) && runStart !== null) {
         const len = (j - runStart) * PITCH + 0.6;
-        const m = mkRoad(ROAD_W, len); m.position.set(roadCoord(k), 0.01, roadCoord(runStart) + len / 2); scene.add(m);
+        const m = mkRoad(k === 0 ? ROAD_W + 6 : ROAD_W, len); m.position.set(roadCoord(k), 0.01, roadCoord(runStart) + len / 2); scene.add(m);
         runStart = null;
       }
     }
@@ -836,7 +836,7 @@ async function buildCity() {
       if (land && runStart === null) runStart = j;
       if ((!land || j === GRID) && runStart !== null) {
         const len = (j - runStart) * PITCH + 0.6;
-        const m = mkRoadH(ROAD_W, len); m.position.set(roadCoord(runStart) + len / 2, 0.01, roadCoord(k)); scene.add(m);
+        const m = mkRoadH(k === 0 ? ROAD_W + 6 : ROAD_W, len); m.position.set(roadCoord(runStart) + len / 2, 0.01, roadCoord(k)); scene.add(m);
         runStart = null;
       }
     }
@@ -873,6 +873,8 @@ async function buildCity() {
     if (SUPER[bk] === 'hoodbig') { makeHouses(cx, cz); makeHouses(cx, cz + PITCH); continue; }
     if (SUPER[bk] === 'mall') { makeMall(cx, cz); continue; }
     if (SUPER[bk] === 'school') { makeSchool(cx, cz); continue; }
+    if (SUPER[bk] === 'school2') { makeSchool(cx, cz, 'SOUTH SCHOOL'); continue; }
+    if (SUPER[bk] === 'park2x2') { makeParkPlain(cx, cz, false); makeParkPlain(cx + PITCH, cz, false); makeParkPlain(cx, cz + PITCH, false); makeParkPlain(cx + PITCH, cz + PITCH, false); makeLake(cx + PITCH / 2, cz + PITCH / 2); parkSign(cx + PITCH + 14, cz + PITCH + 22, 'NORTH PARK'); continue; }
     const deepLand = inIsland(cx - 28, cz - 28) && inIsland(cx + 28, cz - 28) && inIsland(cx - 28, cz + 28) && inIsland(cx + 28, cz + 28);
     const roll = Math.random();
     if (deepLand && roll < 0.10) { makeParkingLot(cx, cz); continue; }
@@ -1868,7 +1870,7 @@ function minimap(now) {
   mm.fillStyle = '#1e4620';
   mm.fillRect(cx + (36 - BLOCK / 2 - anchor.x) * S, cy + (36 - BLOCK / 2 - anchor.z) * S, BLOCK * S, BLOCK * S);
   // roads
-  mm.fillStyle = '#4b5563';
+  mm.fillStyle = '#78818e';
   for (let k = -GRID; k <= GRID; k++) for (let j = -GRID; j < GRID; j++) {
     if (segClear('v', k, j)) mm.fillRect(cx + (roadCoord(k) - ROAD_W / 2 - anchor.x) * S, cy + (roadCoord(j) - anchor.z) * S, ROAD_W * S, PITCH * S);
     if (segClear('h', k, j)) mm.fillRect(cx + (roadCoord(j) - anchor.x) * S, cy + (roadCoord(k) - ROAD_W / 2 - anchor.z) * S, PITCH * S, ROAD_W * S);
@@ -2178,8 +2180,8 @@ function syncTouch() {
   $('touchFoot').classList.toggle('on', touch && mode === 'foot');
 }
 </script>
-<script src="/games/pursuit3d-world.js?v=1"></script>
-<script src="/games/pursuit3d-b.js?v=7"></script>
+<script src="/games/pursuit3d-world.js?v=2"></script>
+<script src="/games/pursuit3d-b.js?v=8"></script>
 <script src="/games/admin-panel.js"></script>
 </body>
 </html>
