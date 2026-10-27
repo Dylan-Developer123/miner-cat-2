@@ -97,9 +97,9 @@ if (!window.THREE) { $('msg').textContent = '⚠️ The 3D library could not loa
 const PITCH = 72;              // distance between road centers
 const ROAD_W = 16;             // road width
 const BLOCK = PITCH - ROAD_W;  // building block size (56)
-const GRID = 4;                // roads every 72 from -288 to 288 (downtown core unchanged)
-const CITY = GRID * PITCH + 40; // playable half-extent (~256)
-const EXT = CITY + 95;          // world edge, including the hill country
+const GRID = 6;                // 12x12 blocks — roads every 72 from -432 to 432 (downtown core unchanged)
+const CITY = GRID * PITCH + 40; // island half-extent
+const EXT = CITY + 95;          // world edge, out in the sea
 const roadCoord = k => k * PITCH;
 let colliders = [];            // building AABBs {x1,z1,x2,z2}
 let FACES = [];                // building facade textures, filled by buildCity
@@ -249,29 +249,65 @@ function makeSignTexture(word, color) {
 }
 // ============================== WORLD BUILD ==============================
 const RAMPS = [];
-const HILLS = [
-  { x: 445, z: -110, r: 95, h: 13 }, { x: 405, z: 265, r: 85, h: 10 },
-  { x: -440, z: 160, r: 100, h: 15 }, { x: -400, z: -290, r: 90, h: 11 },
-  { x: 80, z: -465, r: 105, h: 14 }, { x: -130, z: 450, r: 95, h: 12 },
-  { x: 520, z: 440, r: 115, h: 16 }, { x: -535, z: -450, r: 105, h: 13 },
-  { x: 445, z: -30, r: 70, h: 8 }, { x: -430, z: 60, r: 65, h: 7 }
-];
-function hillHeight(x, z) {
-  const m = Math.max(Math.abs(x), Math.abs(z));
-  if (m < CITY - 30) return 0;
-  let h = 0;
-  for (const b of HILLS) {
-    const dx = x - b.x, dz = z - b.z;
-    h += b.h * Math.exp(-(dx * dx + dz * dz) / (b.r * b.r));
+// Dylan's island: a hand-drawn bean/kidney outline (notch on the north shore,
+// dome to the east, lobe to the southwest), ocean all around. World coords [x, z].
+const ISLAND = [ [40,-420],[200,-395],[360,-300],[455,-140],[480,60],[420,250],[300,380],[130,445],[-60,450],[-235,395],[-370,290],[-455,130],[-480,-60],[-455,-230],[-370,-360],[-260,-395],[-165,-352],[-120,-330] ];
+function inIsland(x, z) {
+  let inside = false;
+  for (let i = 0, j = ISLAND.length - 1; i < ISLAND.length; j = i++) {
+    const xi = ISLAND[i][0], zi = ISLAND[i][1], xj = ISLAND[j][0], zj = ISLAND[j][1];
+    if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) inside = !inside;
   }
-  return h * Math.min(1, Math.max(0, (m - (CITY - 30)) / 60));
+  return inside;
+}
+function distToShore(x, z) { // distance to the island outline, whichever side you are on
+  let d = 1e9;
+  for (let i = 0, j = ISLAND.length - 1; i < ISLAND.length; j = i++) {
+    const ax = ISLAND[j][0], az = ISLAND[j][1], bx = ISLAND[i][0], bz = ISLAND[i][1];
+    const abx = bx - ax, abz = bz - az;
+    const t = Math.max(0, Math.min(1, ((x - ax) * abx + (z - az) * abz) / (abx * abx + abz * abz)));
+    d = Math.min(d, Math.hypot(x - (ax + abx * t), z - (az + abz * t)));
+  }
+  return d;
+}
+function offsetIsland(d) { // the same outline pushed d units seaward
+  const n = ISLAND.length;
+  const cen = ISLAND.reduce((a, pt) => [a[0] + pt[0] / n, a[1] + pt[1] / n], [0, 0]);
+  const edgeN = ISLAND.map(([x, z], i) => {
+    const [nx, nz] = ISLAND[(i + 1) % n];
+    let ex = nz - z, ez = -(nx - x);
+    const mx = (x + nx) / 2 - cen[0], mz = (z + nz) / 2 - cen[1];
+    if (ex * mx + ez * mz < 0) { ex = -ex; ez = -ez; }
+    const l = Math.hypot(ex, ez) || 1;
+    return [ex / l, ez / l];
+  });
+  return ISLAND.map(([x, z], i) => {
+    const n1 = edgeN[(i + n - 1) % n], n2 = edgeN[i];
+    let dx = n1[0] + n2[0], dz = n1[1] + n2[1];
+    const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
+    const m = Math.max(0.55, dx * n2[0] + dz * n2[1]);
+    return [x + dx * d / m, z + dz * d / m];
+  });
+}
+function landBlock(bi, bj) {
+  if (bi < -GRID || bi >= GRID || bj < -GRID || bj >= GRID) return false;
+  return inIsland(roadCoord(bi) + PITCH / 2, roadCoord(bj) + PITCH / 2);
+}
+function segLand(axis, k, j) { // does this road segment (intersection j -> j+1 on road k) touch land?
+  if (axis === 'v') return landBlock(k - 1, j) || landBlock(k, j);
+  return landBlock(j, k - 1) || landBlock(j, k);
+}
+function shoreHeight(x, z) { // 0 on land, sloping seabed once you leave the shore
+  if (inIsland(x, z)) return 0;
+  const t = Math.min(1, distToShore(x, z) / 60);
+  return -0.1 - 2.05 * (t * t * (3 - 2 * t));
 }
 function groundHeightAt(x, z, refY) {
   const gh = garageHeight(x, z);
   if (gh !== null) return gh;
   const ph = parkingHeight(x, z, refY || 0);
   if (ph !== null) return ph;
-  let gy = Math.max(hillHeight(x, z), cityHillHeight(x, z));
+  let gy = Math.max(shoreHeight(x, z), cityHillHeight(x, z));
   for (const r of RAMPS) {
     const dx = x - r.x, dz = z - r.z;
     const fx = -Math.sin(r.angle), fz = -Math.cos(r.angle);
@@ -747,8 +783,8 @@ async function buildCity() {
   scene = new THREE.Scene();
   const skyTex = makeSkyTexture();
   scene.background = skyTex;
-  scene.fog = new THREE.Fog(0x2a2233, 130, 560);
-  camera = new THREE.PerspectiveCamera(66, 720 / 460, 0.1, 1300);
+  scene.fog = new THREE.Fog(0x2a2233, 170, 980);
+  camera = new THREE.PerspectiveCamera(66, 720 / 460, 0.1, 2600);
   renderer = await createRenderer();
   renderer.domElement.addEventListener('webglcontextlost', ev => {
     ev.preventDefault();
@@ -775,53 +811,57 @@ async function buildCity() {
   sunLight.shadow.camera.near = 10; sunLight.shadow.camera.far = 380;
   sunLight.shadow.bias = -0.0006; sunLight.shadow.normalBias = 0.03;
   scene.add(sunLight); scene.add(sunLight.target);
-  // surrounding bay (water) + city ground
+  // the island: one big ocean with an island-shaped hole, a sand apron, then the city ground
   const waterMat = new THREE.MeshStandardMaterial({ color: 0x11395e, roughness: 0.12, metalness: 0.6, envMapIntensity: 1.2 });
-  const WB = CITY + 14, WOUT = 1250; // water as a frame around the island — never under the city (the garage lives there)
-  const mkWater = (w, d, x, z) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), waterMat); m.rotation.x = -Math.PI / 2; m.position.set(x, -0.4, z); scene.add(m); };
-  mkWater(WOUT * 2, WOUT - WB, 0, -(WB + (WOUT - WB) / 2));
-  mkWater(WOUT * 2, WOUT - WB, 0, WB + (WOUT - WB) / 2);
-  mkWater(WOUT - WB, WB * 2, -(WB + (WOUT - WB) / 2), 0);
-  mkWater(WOUT - WB, WB * 2, WB + (WOUT - WB) / 2, 0);
+  const shapeOf = pts => {
+    const sh = new THREE.Shape();
+    pts.forEach(([x, z], i) => { if (i === 0) sh.moveTo(x, -z); else sh.lineTo(x, -z); });
+    sh.closePath();
+    return sh;
+  };
+  const oceanShape = new THREE.Shape();
+  oceanShape.moveTo(-1500, -1500); oceanShape.lineTo(1500, -1500); oceanShape.lineTo(1500, 1500); oceanShape.lineTo(-1500, 1500); oceanShape.closePath();
+  const oceanHole = new THREE.Path();
+  offsetIsland(8).forEach(([x, z], i) => { if (i === 0) oceanHole.moveTo(x, -z); else oceanHole.lineTo(x, -z); });
+  oceanHole.closePath();
+  oceanShape.holes.push(oceanHole);
+  const oceanGeo = new THREE.ShapeGeometry(oceanShape); oceanGeo.rotateX(-Math.PI / 2);
+  const ocean = new THREE.Mesh(oceanGeo, waterMat);
+  ocean.position.y = -0.6; scene.add(ocean);
+  const sandGeo = new THREE.ShapeGeometry(shapeOf(offsetIsland(13))); sandGeo.rotateX(-Math.PI / 2);
+  const sand = new THREE.Mesh(sandGeo, new THREE.MeshStandardMaterial({ color: 0xb59a67, roughness: 1 }));
+  sand.position.y = -0.16; sand.receiveShadow = true; scene.add(sand);
   const swTex = sidewalkTexture(); swTex.repeat.set(0.057, 0.057);
-  const gShape = new THREE.Shape();
-  const GE = CITY + ROAD_W / 2;
-  gShape.moveTo(-GE, -GE); gShape.lineTo(GE, -GE); gShape.lineTo(GE, GE); gShape.lineTo(-GE, GE); gShape.closePath();
+  const gShape = shapeOf(ISLAND);
   const gHole = new THREE.Path(); // garage entrance cut-out (shape Y maps to world -Z): world x 78..104, z 29..43
   gHole.moveTo(78, -43); gHole.lineTo(104, -43); gHole.lineTo(104, -29); gHole.lineTo(78, -29); gHole.closePath();
   gShape.holes.push(gHole);
   const groundGeo = new THREE.ShapeGeometry(gShape); groundGeo.rotateX(-Math.PI / 2);
   const ground = new THREE.Mesh(groundGeo, new THREE.MeshStandardMaterial({ map: swTex, roughness: 1 }));
   ground.position.y = -0.06; ground.receiveShadow = true; scene.add(ground); groundMesh = ground;
-  // rolling countryside: one sculpted terrain sheet, dug flat under the city
-  const terrGeo = new THREE.PlaneGeometry(1500, 1500, 100, 100);
-  terrGeo.rotateX(-Math.PI / 2);
-  const tp = terrGeo.attributes.position;
-  for (let i = 0; i < tp.count; i++) {
-    const vx = tp.getX(i), vz = tp.getZ(i);
-    let vy = hillHeight(vx, vz) - 0.08;
-    if (Math.abs(vx) < CITY + 10 && Math.abs(vz) < CITY + 10) vy = -0.35;
-    if (vx > 72 && vx < 108 && vz > 24 && vz < 48) vy = -8.5; // garage void under the entrance
-    tp.setY(i, vy);
-  }
-  terrGeo.computeVertexNormals();
-  const terrain = new THREE.Mesh(terrGeo, new THREE.MeshStandardMaterial({ color: 0x2f6626, roughness: 1, flatShading: true }));
-  terrain.receiveShadow = true; scene.add(terrain); terrMesh = terrain;
-  const hillSpot = () => {
-    const side = Math.floor(Math.random() * 4), along = (Math.random() - 0.5) * 900, out = CITY + 55 + Math.random() * 165;
-    if (side === 0) return [out, along]; if (side === 1) return [-out, along];
-    if (side === 2) return [along, out]; return [along, -out];
+  // beach dressing: trees and rocks dotted along the shoreline
+  const shoreSpot = () => {
+    for (let t = 0; t < 40; t++) {
+      const a = Math.random() * Math.PI * 2, r = 280 + Math.random() * 230;
+      const x = Math.cos(a) * r, z = Math.sin(a) * r;
+      if (Math.max(Math.abs(x), Math.abs(z)) < 430) continue;   // stay off the city blocks
+      if (!inIsland(x, z) && distToShore(x, z) > 9) continue;   // on the island or its sand apron
+      if (distToShore(x, z) > 40) continue;                     // near the water
+      return [x, z];
+    }
+    return null;
   };
-  for (let i = 0; i < 30; i++) { const [hx, hz] = hillSpot(); addTree(hx, hz, false, hillHeight(hx, hz)); }
+  for (let i = 0; i < 15; i++) { const sp = shoreSpot(); if (sp) addTree(sp[0], sp[1], false, groundHeightAt(sp[0], sp[1])); }
   const rockMat = new THREE.MeshStandardMaterial({ color: 0x707a84, roughness: 0.95, flatShading: true });
-  for (let i = 0; i < 16; i++) {
-    const [hx, hz] = hillSpot();
+  for (let i = 0; i < 10; i++) {
+    const sp = shoreSpot(); if (!sp) continue;
     const rock = new THREE.Mesh(new THREE.IcosahedronGeometry(0.8 + Math.random() * 1.8, 0), rockMat);
-    rock.position.set(hx, hillHeight(hx, hz) + 0.3, hz);
+    rock.position.set(sp[0], groundHeightAt(sp[0], sp[1]) + 0.3, sp[1]);
     rock.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3);
     rock.castShadow = true; scene.add(rock);
   }
-  // roads: horizontal & vertical strips
+  // roads: built in runs between intersections, and only where they touch land —
+  // streets run into the beach at the shore instead of floating over the sea
   const roadTex = roadTextures();
   const mkRoad = (w, l) => {
     const t = roadTex.clone(); t.needsUpdate = true; t.repeat.set(1, l / 16);
@@ -836,14 +876,32 @@ async function buildCity() {
     m.rotation.x = -Math.PI / 2; m.rotation.z = Math.PI / 2; m.position.y = 0.01; m.receiveShadow = true;
     return m;
   };
-  const span = GRID * 2 * PITCH + ROAD_W + 30;
   for (let k = -GRID; k <= GRID; k++) {
-    const v = mkRoad(ROAD_W, span); v.position.x = roadCoord(k); scene.add(v);
-    const h = mkRoadH(ROAD_W, span); h.position.z = roadCoord(k); scene.add(h);
+    let runStart = -1;
+    for (let j = -GRID; j <= GRID; j++) {
+      const land = j < GRID && segLand('v', k, j);
+      if (land && runStart < 0) runStart = j;
+      if ((!land || j === GRID) && runStart >= 0) {
+        const len = (j - runStart) * PITCH;
+        const m = mkRoad(ROAD_W, len); m.position.set(roadCoord(k), 0.01, roadCoord(runStart) + len / 2); scene.add(m);
+        runStart = -1;
+      }
+    }
+    runStart = -1;
+    for (let j = -GRID; j <= GRID; j++) {
+      const land = j < GRID && segLand('h', k, j);
+      if (land && runStart < 0) runStart = j;
+      if ((!land || j === GRID) && runStart >= 0) {
+        const len = (j - runStart) * PITCH;
+        const m = mkRoadH(ROAD_W, len); m.position.set(roadCoord(runStart) + len / 2, 0.01, roadCoord(k)); scene.add(m);
+        runStart = -1;
+      }
+    }
   }
   // intersection patches (plain asphalt squares kill the double-line look)
   const patchMat = new THREE.MeshStandardMaterial({ map: crosswalkTexture(), roughness: 0.95 });
   for (let i = -GRID; i <= GRID; i++) for (let j = -GRID; j <= GRID; j++) {
+    if (!(landBlock(i - 1, j - 1) || landBlock(i, j - 1) || landBlock(i - 1, j) || landBlock(i, j))) continue;
     const p = new THREE.Mesh(new THREE.PlaneGeometry(ROAD_W, ROAD_W), patchMat);
     p.rotation.x = -Math.PI / 2; p.position.set(roadCoord(i), 0.02, roadCoord(j)); p.receiveShadow = true; scene.add(p);
   }
@@ -854,6 +912,7 @@ async function buildCity() {
   ];
   for (let bi = -GRID; bi < GRID; bi++) for (let bj = -GRID; bj < GRID; bj++) {
     const cx = roadCoord(bi) + PITCH / 2, cz = roadCoord(bj) + PITCH / 2;
+    if (!inIsland(cx, cz)) continue; // open water — the island's edge cuts this block away
     if (bi === 0 && bj === 0) { makePark(cx, cz); continue; }
     if (bi === 1 && bj === 0) { buildGaragePlaza(cx, cz); continue; }
     if (bi === -1 && bj === 0) { buildParkingGarage(); continue; }
@@ -868,8 +927,10 @@ async function buildCity() {
   }
   // streetlights along roads
   for (let k = -GRID; k <= GRID; k++) for (let s = -GRID * PITCH; s <= GRID * PITCH; s += 54) {
-    addStreetlight(roadCoord(k) + ROAD_W / 2 + 1.5, s + 10);
-    addStreetlight(s + 10, roadCoord(k) + ROAD_W / 2 + 1.5);
+    const lx1 = roadCoord(k) + ROAD_W / 2 + 1.5, lz1 = s + 10;
+    if (inIsland(lx1, lz1)) addStreetlight(lx1, lz1);
+    const lx2 = s + 10, lz2 = roadCoord(k) + ROAD_W / 2 + 1.5;
+    if (inIsland(lx2, lz2)) addStreetlight(lx2, lz2);
   }
   // stunt ramps: four on the streets, one in the park
   addRamp(4, -40, 0);
@@ -877,21 +938,21 @@ async function buildCity() {
   addRamp(120, -68, -Math.PI / 2);
   addRamp(-160, 76, Math.PI / 2);
   addRamp(-30, 144, Math.PI / 2);
-  // distant skyline silhouettes on the horizon
-  const silMat = new THREE.MeshBasicMaterial({ color: 0x12141f });
-  for (let i = 0; i < 30; i++) {
-    const a = (i / 30) * Math.PI * 2 + Math.random() * 0.15;
-    const r = 620 + Math.random() * 120, hgt = 26 + Math.random() * 55;
-    const b = new THREE.Mesh(new THREE.BoxGeometry(22 + Math.random() * 18, hgt, 22), silMat);
-    b.position.set(Math.cos(a) * r, hgt / 2 - 2, Math.sin(a) * r);
-    scene.add(b);
+  // distant islets on the horizon — this city is an island now
+  const silMat = new THREE.MeshBasicMaterial({ color: 0x101623 });
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + Math.random() * 0.5;
+    const r = 900 + Math.random() * 250;
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(60 + Math.random() * 70, 16 + Math.random() * 22, 7), silMat);
+    cone.position.set(Math.cos(a) * r, -2, Math.sin(a) * r);
+    scene.add(cone);
   }
   // drifting sunset clouds
   const cloudTex = glowTexture();
   for (let i = 0; i < 11; i++) {
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: cloudTex, color: 0xd9a08a, transparent: true, opacity: 0.13 + Math.random() * 0.12, depthWrite: false }));
     sp.scale.set(150 + Math.random() * 160, 34 + Math.random() * 26, 1);
-    sp.position.set((Math.random() - 0.5) * 1000, 95 + Math.random() * 60, (Math.random() - 0.5) * 1000);
+    sp.position.set((Math.random() - 0.5) * 1700, 95 + Math.random() * 60, (Math.random() - 0.5) * 1700);
     scene.add(sp); clouds.push(sp);
   }
   // one real headlight beam that follows whatever car you drive
@@ -1153,6 +1214,7 @@ function pickPedTarget(ped) {
   ped.tz = bz + (Math.random() - 0.5) * (BLOCK + 6);
   ped.tx = Math.max(-CITY, Math.min(CITY, ped.tx));
   ped.tz = Math.max(-CITY, Math.min(CITY, ped.tz));
+  if (!inIsland(ped.tx, ped.tz)) { ped.tx = ped.x + (36 - ped.x) * 0.4; ped.tz = ped.z + (36 - ped.z) * 0.4; }
 }
 // ============================== VEHICLE PHYSICS ==============================
 const fwd = car => ({ x: -Math.sin(car.angle), z: -Math.cos(car.angle) });
@@ -1201,6 +1263,16 @@ function stepVehicle(car, dt, input) {
   if (car.pedalB > 0.02) {
     if (vF > 0.5) vF -= car.pedalB * 40 * (car.skid ? 0.82 : 1) * dt;
     else vF = Math.max(-20, vF - car.pedalB * 17 * dt);
+  }
+  // --- water: past the beach the sea grabs the car (island shores) ---
+  const wp = car.mesh.position;
+  if (!inIsland(wp.x, wp.z)) {
+    const depth = -shoreHeight(wp.x, wp.z);
+    if (depth > 0.55) {
+      vF -= vF * Math.min(4.5, depth * 1.8) * dt;
+      vL *= Math.exp(-2.5 * dt);
+      if (depth > 1.6) vF = Math.max(-6, Math.min(6, vF));
+    }
   }
   // --- drag ---
   vF -= vF * 0.2 * dt + Math.sign(vF) * vF * vF * 0.0016 * dt;
@@ -1371,6 +1443,9 @@ function aheadEntity(car, dist) {
 }
 function trafficInput(car, dt) {
   const ai = car.ai, p = car.mesh.position;
+  // traffic that blunders into the sea U-turns back toward land
+  ai.seaCd = Math.max(0, (ai.seaCd || 0) - dt);
+  if (ai.seaCd <= 0 && !inIsland(p.x, p.z) && shoreHeight(p.x, p.z) < -0.7) { ai.dir *= -1; ai.seaCd = 6; }
   ai.turnCd = Math.max(0, (ai.turnCd || 0) - dt);
   ai.panic = Math.max(0, ai.panic - dt);
   // lane target point ahead
@@ -1464,6 +1539,7 @@ function spawnTrafficCar() {
     let x, z;
     if (axis === 'x') { z = road * PITCH + (dir > 0 ? 4 : -4); x = along; }
     else { x = road * PITCH + (dir > 0 ? -4 : 4); z = along; }
+    if (!inIsland(x, z)) continue;
     if (Math.hypot(x - anchor.x, z - anchor.z) < 55) continue;
     if (cars.some(c => Math.hypot(c.mesh.position.x - x, c.mesh.position.z - z) < 12)) continue;
     const angle = axis === 'x' ? (dir > 0 ? -Math.PI / 2 : Math.PI / 2) : (dir > 0 ? Math.PI : 0);
@@ -1483,6 +1559,7 @@ function spawnCopCar() {
     // snap to nearest road
     if (Math.random() < 0.5) x = Math.round(x / PITCH) * PITCH + 3; else z = Math.round(z / PITCH) * PITCH + 3;
     x = Math.max(-CITY, Math.min(CITY, x)); z = Math.max(-CITY, Math.min(CITY, z));
+    if (!inIsland(x, z)) continue;
     if (cars.some(c => Math.hypot(c.mesh.position.x - x, c.mesh.position.z - z) < 10)) continue;
     const cop = addCar(0x111827, x, z, 0, 'cop', { cop: true, premium: true });
     cop.power = 1.13;
@@ -2116,7 +2193,7 @@ function animate() {
       headlight.target.updateMatrixWorld();
     } else headlight.intensity = 0;
   }
-  for (const cl of clouds) { cl.position.x += dt * 1.1; if (cl.position.x > 560) cl.position.x = -560; }
+  for (const cl of clouds) { cl.position.x += dt * 1.1; if (cl.position.x > 900) cl.position.x = -900; }
   renderer.render(scene, camera);
 }
 // ============================== INPUT ==============================
@@ -2127,7 +2204,7 @@ function syncTouch() {
   $('touchFoot').classList.toggle('on', touch && mode === 'foot');
 }
 </script>
-<script src="/games/pursuit3d-b.js?v=3"></script>
+<script src="/games/pursuit3d-b.js?v=4"></script>
 <script src="/games/admin-panel.js"></script>
 </body>
 </html>
