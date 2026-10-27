@@ -703,7 +703,14 @@ function buildCity() {
   scene.background = skyTex;
   scene.fog = new THREE.Fog(0x2a2233, 130, 560);
   camera = new THREE.PerspectiveCamera(66, 720 / 460, 0.1, 1300);
-  renderer = new THREE.WebGLRenderer({ antialias: true });
+  // iPads can refuse a full-fat WebGL context (too many tabs holding graphics slots) —
+  // if the fancy one fails, fall back to a lighter context instead of a black screen
+  try { renderer = new THREE.WebGLRenderer({ antialias: true }); }
+  catch (e) { renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'low-power', stencil: false }); }
+  renderer.domElement.addEventListener('webglcontextlost', ev => {
+    ev.preventDefault();
+    try { if (!sessionStorage.getItem('cp_ctx')) { sessionStorage.setItem('cp_ctx', '1'); location.reload(); } } catch (e2) {}
+  });
   renderer.setSize(720, 460);
   renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
   renderer.outputEncoding = THREE.sRGBEncoding;
