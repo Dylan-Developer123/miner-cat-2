@@ -119,7 +119,7 @@ function makeBuilding(cx, cz, b) {
   const fits = (px, pz) => {
     const m = 1.5;
     const cs = [[px - w / 2 - m, pz - d / 2 - m], [px + w / 2 + m, pz - d / 2 - m], [px - w / 2 - m, pz + d / 2 + m], [px + w / 2 + m, pz + d / 2 + m]];
-    return cs.every(c => inIsland(c[0], c[1]) && distToPaths(c[0], c[1]) > 4); // on land AND off the curved roads
+    return cs.every(c => inIsland(c[0], c[1]) && distToPaths(c[0], c[1]) > 9.5); // on land AND fully off the curved roads (road half-width 6.5 + margin)
   };
   let bx = null, bz = null;
   for (let t = 0; t < 10 && bx === null; t++) {
@@ -239,7 +239,7 @@ function ribbonMesh(pts, width, closed) { // a road ribbon that follows a curve
     const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
     if (i > 0) dist += Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1]);
     const hw = width / 2;
-    pos.push(p[0] - dz * hw, 0.015, p[1] + dx * hw, p[0] + dz * hw, 0.015, p[1] - dx * hw);
+    pos.push(p[0] - dz * hw, 0.025, p[1] + dx * hw, p[0] + dz * hw, 0.025, p[1] - dx * hw);
     uv.push(0, dist / 16, 1, dist / 16);
     if (i < n - 1 || closed) { const a = i * 2, b = ((i + 1) % n) * 2; idx.push(a, b, a + 1, b, b + 1, a + 1); }
   }
@@ -303,7 +303,7 @@ function updateWeather(dt) {
   rainPts.material.opacity = wxCur.rain * 0.55;
   rainPts.visible = wxCur.rain > 0.02;
   if (rainPts.visible) {
-    const a = playerAnchor();
+    const a = mode === 'drive' && playerCar ? playerCar.mesh.position : (char ? char.position : { x: 0, z: 0 });
     rainPts.position.set(a.x, 0, a.z);
     const fall = 48 * dt;
     for (let i = 0; i < rainPos.length; i += 3) { rainPos[i + 1] -= fall * (0.8 + (i % 13) / 32); if (rainPos[i + 1] < 0) rainPos[i + 1] += 55; }
@@ -439,7 +439,8 @@ async function buildCity() {
     const anySeg = (j > -GRID && segClear('v', i, j - 1)) || (j < GRID && segClear('v', i, j)) ||
                    (i > -GRID && segClear('h', j, i - 1)) || (i < GRID && segClear('h', j, i));
     if (!anySeg) continue; // a junction only exists where real road segments meet
-    const p = new THREE.Mesh(new THREE.PlaneGeometry(ROAD_W + 0.5, ROAD_W + 0.5), patchMat);
+    const psz = (i === 0 || j === 0) ? 23 : ROAD_W + 0.5; // avenue crossings get an avenue-sized patch
+    const p = new THREE.Mesh(new THREE.PlaneGeometry(psz, psz), patchMat);
     p.rotation.x = -Math.PI / 2; p.position.set(roadCoord(i), 0.02, roadCoord(j)); p.receiveShadow = true; scene.add(p);
     if (i === 0 || j === 0) addStreetSign(roadCoord(i) + ROAD_W / 2 + 2.2, roadCoord(j) + ROAD_W / 2 + 2.2, STREET_V[i + 6], STREET_H[j + 6]);
   }
@@ -469,8 +470,9 @@ async function buildCity() {
     if (SUPER[bk] === 'park2x2') { makeParkPlain(cx, cz, false); makeParkPlain(cx + PITCH, cz, false); makeParkPlain(cx, cz + PITCH, false); makeParkPlain(cx + PITCH, cz + PITCH, false); makeLake(cx + PITCH / 2, cz + PITCH / 2); parkSign(cx + PITCH + 14, cz + PITCH + 22, 'NORTH PARK'); continue; }
     const deepLand = inIsland(cx - 28, cz - 28) && inIsland(cx + 28, cz - 28) && inIsland(cx - 28, cz + 28) && inIsland(cx + 28, cz + 28);
     const roll = Math.random();
-    if (deepLand && roll < 0.10) { makeParkingLot(cx, cz); continue; }
-    if (deepLand && roll < 0.20) { makePlaza(cx, cz); continue; }
+    const clearOfCurves = distToPaths(cx, cz) > 36; // lots/plazas are wide — never let one straddle a curved road
+    if (deepLand && clearOfCurves && roll < 0.10) { makeParkingLot(cx, cz); continue; }
+    if (deepLand && clearOfCurves && roll < 0.20) { makePlaza(cx, cz); continue; }
     const n = 1 + Math.floor(Math.random() * 3);
     for (let b = 0; b < n; b++) makeBuilding(cx, cz, b);
     sprinkleProps(cx, cz);
