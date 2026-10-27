@@ -1773,12 +1773,12 @@ function animate() {
     if (mode === 'drive') {
       const F = fwd(playerCar), p = playerCar.mesh.position;
       const camDist = 11.5 + Math.abs(playerCar.speed) * 0.05;
-      targetPos = { x: p.x - F.x * camDist, y: 5.4 + Math.abs(playerCar.speed) * 0.008, z: p.z - F.z * camDist };
-      look = { x: p.x + F.x * 9, y: 1.2, z: p.z + F.z * 9 };
+      targetPos = { x: p.x - F.x * camDist, y: p.y + 5.4 + Math.abs(playerCar.speed) * 0.008, z: p.z - F.z * camDist };
+      look = { x: p.x + F.x * 9, y: p.y + 1.2, z: p.z + F.z * 9 };
     } else {
       const F = { x: -Math.sin(charAngle), z: -Math.cos(charAngle) };
-      targetPos = { x: char.position.x - F.x * 7.5, y: 4.6, z: char.position.z - F.z * 7.5 };
-      look = { x: char.position.x, y: 1.3, z: char.position.z };
+      targetPos = { x: char.position.x - F.x * 7.5, y: char.position.y + 4.6, z: char.position.z - F.z * 7.5 };
+      look = { x: char.position.x, y: char.position.y + 1.3, z: char.position.z };
     }
     const k = 1 - Math.exp(-4.5 * dt);
     camera.position.x += (targetPos.x - camera.position.x) * k;
