@@ -1,8 +1,8 @@
 // City Pursuit 3D — world builders (split from pursuit3d.html so each file
 // stays small enough to ship): superblocks, block types, street signs, buildings.
 // Loaded between part A and part B; everything here is called at build time.
-const SUPER = { '4,1': 'bigpark', '1,-3': 'mall', '-2,-4': 'school', '-4,-2': 'hoodbig' };
-const SUPER_SKIP = new Set(['4,2', '2,-3', '-1,-4', '-4,-1']);
+const SUPER = { '4,1': 'bigpark', '1,-3': 'mall', '-2,-4': 'school', '-4,-2': 'hoodbig', '-5,-5': 'park2x2', '5,2': 'bigpark', '-3,2': 'hoodbig', '2,4': 'school2' };
+const SUPER_SKIP = new Set(['4,2', '2,-3', '-1,-4', '-4,-1', '-4,-5', '-5,-4', '-4,-4', '5,3', '-3,3', '3,4']);
 function parkSign(x, z, text) {
   const m = new THREE.Mesh(new THREE.PlaneGeometry(12, 3), new THREE.MeshBasicMaterial({ map: makeSignTexture(text, '#4ade80'), side: THREE.DoubleSide }));
   m.position.set(x, 2.4, z); scene.add(m);
@@ -42,7 +42,7 @@ function makeMall(cx, cz) { // two blocks wide: big flat store + parking lot in 
   }
   for (let i = 0; i < 4; i++) parkedCar(ux - 45 + i * 26 + Math.random() * 6, uz + 15, Math.PI / 2);
 }
-function makeSchool(cx, cz) { // two blocks wide: twin halls + a sports field
+function makeSchool(cx, cz, name) { // two blocks wide: twin halls + a sports field
   const ux = cx + PITCH / 2, uz = cz;
   const wallMat = new THREE.MeshStandardMaterial({ color: 0xd9cfc0, roughness: 0.9 });
   const roofMat = new THREE.MeshStandardMaterial({ color: 0x8a4b3a, roughness: 0.95 });
@@ -51,7 +51,7 @@ function makeSchool(cx, cz) { // two blocks wide: twin halls + a sports field
     bld.position.set(ux + off, 4, uz - 14); bld.castShadow = true; bld.receiveShadow = true; scene.add(bld);
     colliders.push({ x1: ux + off - 19, z1: uz - 25, x2: ux + off + 19, z2: uz - 3 });
   }
-  const sign = new THREE.Mesh(new THREE.PlaneGeometry(16, 4), new THREE.MeshBasicMaterial({ map: makeSignTexture('ARQADE HIGH', '#ffd95e') }));
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(16, 4), new THREE.MeshBasicMaterial({ map: makeSignTexture(name || 'ARQADE HIGH', '#ffd95e') }));
   sign.position.set(ux, 6.5, uz - 2.6); scene.add(sign);
   const field = new THREE.Mesh(new THREE.PlaneGeometry(110, 22), new THREE.MeshStandardMaterial({ color: 0x2e7d32, roughness: 1 }));
   field.rotation.x = -Math.PI / 2; field.position.set(ux, 0.03, uz + 14); field.receiveShadow = true; scene.add(field);
@@ -60,6 +60,12 @@ function makeSchool(cx, cz) { // two blocks wide: twin halls + a sports field
     const ln = new THREE.Mesh(new THREE.PlaneGeometry(lw, ld), lineMat);
     ln.rotation.x = -Math.PI / 2; ln.position.set(ux + lx, 0.05, uz + lz); scene.add(ln);
   }
+}
+function makeLake(x, z) { // a little pond in the middle of the 2x2 park
+  const rim = new THREE.Mesh(new THREE.CircleGeometry(17, 24), new THREE.MeshStandardMaterial({ color: 0x8a6f45, roughness: 1 }));
+  rim.rotation.x = -Math.PI / 2; rim.position.set(x, 0.04, z); rim.receiveShadow = true; scene.add(rim);
+  const pond = new THREE.Mesh(new THREE.CircleGeometry(15, 24), new THREE.MeshStandardMaterial({ color: 0x14507e, roughness: 0.1, metalness: 0.5 }));
+  pond.rotation.x = -Math.PI / 2; pond.position.set(x, 0.055, z); scene.add(pond);
 }
 function makeParkingLot(cx, cz) {
   const lot = new THREE.Mesh(new THREE.PlaneGeometry(52, 52), new THREE.MeshStandardMaterial({ color: 0x26282c, roughness: 1 }));
