@@ -98,7 +98,7 @@ let cars = [], peds = [], cops = [], officers = [], trafficTimer = 0, pedTimer =
 let playerCar = null, char = null, charVel = { x: 0, z: 0 }, charAngle = 0, charPhase = 0, charBlend = 0;
 let cash = 0, heat = 0, wanted = 0, health = 100, bustTimer = 0, seenByCop = false, evadeShown = false;
 let elapsed = 0, shake = 0, flashT = 0, submitted = false, heli = null, heliSpot = { x: 0, z: 0 };
-let smokePool = [], driftTime = 0, topSpeed = 0, sunLight = null, clouds = [], headlight = null, underLight = null;
+let smokePool = [], driftTime = 0, topSpeed = 0, sunLight = null, clouds = [], headlight = null, underLight = null, ceilMesh = null, groundMesh = null, terrMesh = null;
 // ============================== TEXTURES ==============================
 function buildingTexture(base, lit) {
   const cv = document.createElement('canvas'); cv.width = 256; cv.height = 512;
@@ -460,7 +460,7 @@ function buildGarage() {
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(46, 54), new THREE.MeshStandardMaterial({ map: parkingTexture(), roughness: 0.95 }));
   floor.rotation.x = -Math.PI / 2; floor.position.set(117, GAR.floor + 0.02, 36); floor.receiveShadow = true; scene.add(floor);
   const ceil = new THREE.Mesh(new THREE.BoxGeometry(50, 0.5, 56), dark);
-  ceil.position.set(117, -0.78, 36); ceil.castShadow = true; scene.add(ceil);
+  ceil.position.set(117, -0.78, 36); ceil.castShadow = true; scene.add(ceil); ceilMesh = ceil;
   const mkWall = (w, d, x, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, 6.2, d), conc); m.position.set(x, -3.9, z); scene.add(m); };
   mkWall(36, 1.2, 117, 11.4); mkWall(36, 1.2, 117, 60.6); mkWall(1.2, 50, 134.6, 36);
   mkWall(1.2, 17, 101.4, 21.5); mkWall(1.2, 17, 101.4, 50.5);
@@ -564,7 +564,7 @@ function buildCity() {
   gShape.holes.push(gHole);
   const groundGeo = new THREE.ShapeGeometry(gShape); groundGeo.rotateX(-Math.PI / 2);
   const ground = new THREE.Mesh(groundGeo, new THREE.MeshStandardMaterial({ map: swTex, roughness: 1 }));
-  ground.position.y = -0.06; ground.receiveShadow = true; scene.add(ground);
+  ground.position.y = -0.06; ground.receiveShadow = true; scene.add(ground); groundMesh = ground;
   // rolling countryside: one sculpted terrain sheet, dug flat under the city
   const terrGeo = new THREE.PlaneGeometry(1500, 1500, 100, 100);
   terrGeo.rotateX(-Math.PI / 2);
@@ -578,7 +578,7 @@ function buildCity() {
   }
   terrGeo.computeVertexNormals();
   const terrain = new THREE.Mesh(terrGeo, new THREE.MeshStandardMaterial({ color: 0x2f6626, roughness: 1, flatShading: true }));
-  terrain.receiveShadow = true; scene.add(terrain);
+  terrain.receiveShadow = true; scene.add(terrain); terrMesh = terrain;
   const hillSpot = () => {
     const side = Math.floor(Math.random() * 4), along = (Math.random() - 0.5) * 820, out = 278 + Math.random() * 165;
     if (side === 0) return [out, along]; if (side === 1) return [-out, along];
@@ -1611,6 +1611,20 @@ function animate() {
     underLight.intensity += (tI - underLight.intensity) * Math.min(1, dt * 5);
     if (underLight.intensity > 0.02) underLight.position.set(anchor.x, anchor.y + 3.4, anchor.z);
   }
+  // cutaway view: while you are underground, the garage roof — and the ground
+  // and hill terrain above it — fade away so nothing blocks your view
+  const under = anchor.y < -1.2;
+  const fadeM = (mesh, target) => {
+    if (!mesh) return;
+    const m = mesh.material;
+    m.transparent = true;
+    m.opacity += (target - m.opacity) * Math.min(1, dt * 8);
+    if (m.opacity > 0.995) { m.opacity = 1; m.transparent = false; }
+    mesh.visible = m.opacity > 0.04;
+  };
+  fadeM(ceilMesh, under ? 0 : 1);
+  fadeM(groundMesh, under ? 0.1 : 1);
+  fadeM(terrMesh, under ? 0 : 1);
   if (state === 'play') {
     elapsed += dt;
     peakWanted = Math.max(peakWanted, wanted);
