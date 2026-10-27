@@ -1168,6 +1168,28 @@ function copInput(car, dt) {
   const tp = { x: target.x, z: target.z };
   if (mode === 'drive' && playerCar) { tp.x += playerCar.vx * 0.35; tp.z += playerCar.vz * 0.35; }
   const dist = Math.hypot(tp.x - p.x, tp.z - p.z);
+  // ---- garage routing: use the entrance ramp instead of grinding on the walls ----
+  const playerUnder = garageHeight(tp.x, tp.z) !== null;
+  const copUnder = garageHeight(p.x, p.z) !== null;
+  if (wanted > 0 && playerUnder !== copUnder) {
+    const wps = playerUnder
+      ? [{ x: 72, z: 36 }, { x: 88, z: 36 }, { x: 112, z: 36 }]  // street mouth -> down the ramp -> inside
+      : [{ x: 88, z: 36 }, { x: 70, z: 36 }];                       // up the ramp -> back to the street
+    if (car.gWp === undefined || car.gWpSide !== playerUnder) { car.gWp = 0; car.gWpSide = playerUnder; }
+    let wp = wps[Math.min(car.gWp, wps.length - 1)];
+    if (Math.hypot(wp.x - p.x, wp.z - p.z) < 6 && car.gWp < wps.length - 1) { car.gWp++; wp = wps[car.gWp]; }
+    const wd = Math.hypot(wp.x - p.x, wp.z - p.z);
+    const arrived = car.gWp >= wps.length - 1 && wd < 5;
+    if (!arrived) {
+      const rin = { steer: steerTo(car, wp.x, wp.z, 2.6), throttle: 0, brake: false, handbrake: false };
+      ai.stuck = Math.abs(car.speed) < 1.2 ? ai.stuck + dt : 0;
+      if (ai.stuck > 1.1) ai.reverse = 0.7;
+      if (ai.reverse > 0) { ai.reverse -= dt; rin.brake = true; rin.steer *= -1; return rin; }
+      rin.throttle = car.speed < 13 ? Math.min(1, 0.35 + wd / 14) : 0; // take the ramp gently
+      if (car.speed > 16) rin.brake = true;
+      return rin;
+    }
+  } else car.gWp = undefined;
   const input = { steer: steerTo(car, tp.x, tp.z, 2.6), throttle: 0, brake: false, handbrake: false };
   if (wanted === 0) { // give up: drive away
     input.steer = steerTo(car, p.x + (p.x - tp.x), p.z + (p.z - tp.z), 2.0);
@@ -1667,7 +1689,7 @@ function animate() {
     updateSmoke(dt);
     // ---------- wanted / evade ----------
     const activeCops = cars.filter(c => c.kind === 'cop');
-    let seen = activeCops.some(c => Math.hypot(c.mesh.position.x - anchor.x, c.mesh.position.z - anchor.z) < 62);
+    let seen = activeCops.some(c => Math.abs(c.mesh.position.y - anchor.y) < 3.5 && Math.hypot(c.mesh.position.x - anchor.x, c.mesh.position.z - anchor.z) < 62);
     // helicopter
     if (wanted >= 4 && !heli) { heli = buildHeli(); heliSpot.x = anchor.x; heliSpot.z = anchor.z; flash('🚁 AIR SUPPORT INBOUND!'); }
     if (wanted < 3 && heli) { scene.remove(heli); scene.remove(heli.userData.spotMesh); heli = null; }
