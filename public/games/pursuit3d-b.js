@@ -239,25 +239,44 @@ $('minimapWrap').addEventListener('click', () => toggleMap(true));
 const bm = $('bigMap').getContext('2d');
 function drawBigMap() {
   const S = 920 / 1240, cx = 460, cy = 460, now = performance.now();
-  bm.fillStyle = '#0e3a5c'; bm.fillRect(0, 0, 920, 920); // ocean
+  bm.fillStyle = '#0c2b47'; bm.fillRect(0, 0, 920, 920); // ocean
   const trace = pts => { bm.beginPath(); pts.forEach(([x, z], i) => { if (i === 0) bm.moveTo(cx + x * S, cy + z * S); else bm.lineTo(cx + x * S, cy + z * S); }); bm.closePath(); };
-  trace(offsetIsland(18)); bm.fillStyle = '#8a6f45'; bm.fill(); // sand rim
-  trace(ISLAND); bm.fillStyle = '#2a2e36'; bm.fill(); // island ground
-  bm.fillStyle = '#1e4620'; bm.fillRect(cx + 8 * S, cy + 8 * S, 56 * S, 56 * S); // park
-  bm.fillStyle = '#4b5563'; // roads — only the segments that touch land
-  for (let k = -GRID; k <= GRID; k++) for (let j = -GRID; j < GRID; j++) {
-    if (segClear('v', k, j)) bm.fillRect(cx + (roadCoord(k) - ROAD_W / 2) * S, cy + (roadCoord(j) - 1) * S, ROAD_W * S, (PITCH + 2) * S);
-    if (segClear('h', k, j)) bm.fillRect(cx + (roadCoord(j) - 1) * S, cy + (roadCoord(k) - ROAD_W / 2) * S, (PITCH + 2) * S, ROAD_W * S);
+  trace(offsetIsland(18)); bm.fillStyle = '#77643f'; bm.fill(); // sand rim
+  trace(ISLAND); bm.fillStyle = '#252a33'; bm.fill(); // island ground
+  bm.fillStyle = '#1d4023'; bm.fillRect(cx + 8 * S, cy + 8 * S, 56 * S, 56 * S); // park
+  // roads like a real map (the picture / GTA): pale ribbons with a dark casing,
+  // drawn segment by segment so they stop at shores and superblocks
+  const drawSegs = (w, col) => {
+    bm.fillStyle = col;
+    for (let k = -GRID; k <= GRID; k++) for (let j = -GRID; j < GRID; j++) {
+      const wk = k === 0 ? w + 2.5 : w;
+      if (segClear('v', k, j)) bm.fillRect(cx + (roadCoord(k) - wk / 2) * S, cy + (roadCoord(j) - 1) * S, wk * S, (PITCH + 2) * S);
+      if (segClear('h', k, j)) bm.fillRect(cx + (roadCoord(j) - 1) * S, cy + (roadCoord(k) - wk / 2) * S, (PITCH + 2) * S, wk * S);
+    }
+  };
+  drawSegs(ROAD_W + 5.5, '#14161a'); // casing
+  drawSegs(ROAD_W, '#59616d'); // streets
+  bm.fillStyle = '#ccd1da'; // Main St + Chapman Ave: the pale avenues
+  for (let j = -GRID; j < GRID; j++) {
+    if (segClear('v', 0, j)) bm.fillRect(cx + (-(ROAD_W + 4) / 2) * S, cy + (roadCoord(j) - 1) * S, (ROAD_W + 4) * S, (PITCH + 2) * S);
+    if (segClear('h', 0, j)) bm.fillRect(cx + (roadCoord(j) - 1) * S, cy + (-(ROAD_W + 4) / 2) * S, (PITCH + 2) * S, (ROAD_W + 4) * S);
   }
   // superblocks (merged block pairs — no road through the middle)
-  bm.fillStyle = '#1e4620'; bm.fillRect(cx + 296 * S, cy + 80 * S, 56 * S, 128 * S); // big park
-  bm.fillStyle = '#7a5b23'; bm.fillRect(cx + 80 * S, cy - 208 * S, 128 * S, 56 * S); // mall
-  bm.fillStyle = '#5b6b7a'; bm.fillRect(cx - 136 * S, cy - 280 * S, 128 * S, 56 * S); // school
-  bm.fillStyle = '#8a6f45'; bm.fillRect(cx - 280 * S, cy - 136 * S, 56 * S, 128 * S); // big neighborhood
+  bm.fillStyle = '#1d4023'; bm.fillRect(cx + 296 * S, cy + 80 * S, 56 * S, 128 * S); // big park
+  bm.fillRect(cx - 352 * S, cy - 352 * S, 128 * S, 128 * S); // north park (2x2)
+  bm.fillRect(cx + 368 * S, cy + 152 * S, 56 * S, 128 * S); // east park
+  bm.fillStyle = '#6e5626'; bm.fillRect(cx + 80 * S, cy - 208 * S, 128 * S, 56 * S); // mall
+  bm.fillStyle = '#4d5b6a'; bm.fillRect(cx - 136 * S, cy - 280 * S, 128 * S, 56 * S); // school
+  bm.fillRect(cx + 152 * S, cy + 296 * S, 128 * S, 56 * S); // south school
+  bm.fillStyle = '#77643f'; bm.fillRect(cx - 280 * S, cy - 136 * S, 56 * S, 128 * S); // big neighborhood
+  bm.fillRect(cx - 208 * S, cy + 152 * S, 56 * S, 128 * S); // second big neighborhood
   bm.font = 'bold 15px sans-serif'; bm.fillStyle = '#ffd95e'; bm.textAlign = 'center';
   bm.fillText('🌳 BIG PARK', cx + 324 * S, cy + 148 * S);
+  bm.fillText('🌲 NORTH PARK', cx - 288 * S, cy - 284 * S);
+  bm.fillText('🌳 EAST PARK', cx + 396 * S, cy + 220 * S);
   bm.fillText('🛍️ MALL', cx + 144 * S, cy - 176 * S);
   bm.fillText('🏫 SCHOOL', cx - 72 * S, cy - 248 * S);
+  bm.fillText('🏫 SOUTH SCHOOL', cx + 216 * S, cy + 328 * S);
   // street names along the roads, like a real map
   bm.fillStyle = 'rgba(255,255,255,.85)'; bm.font = 'bold 14px sans-serif';
   for (let k = -GRID; k <= GRID; k++) {
