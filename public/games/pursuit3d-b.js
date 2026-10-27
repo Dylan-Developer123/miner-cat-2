@@ -410,3 +410,10 @@ bootGame();
 window.addEventListener('pageshow', () => { if (bootRetrySafe) bootGame(); });
 window.addEventListener('focus', () => { if (bootRetrySafe) bootGame(); });
 document.addEventListener('visibilitychange', () => { if (!document.hidden && bootRetrySafe) bootGame(); });
+// Live admin powers for this game — the shared admin panel renders these when
+// it finds window.ARQ_GAME_ADMIN (see admin-panel.js, City Pursuit 3D section).
+window.ARQ_GAME_ADMIN = { actions: [
+  { label: '💰 +$10,000', run() { cash += 10000; flash('💰 Admin: +$10,000'); return '💰 +$10,000 cash!'; } },
+  { label: '🚔 Clear wanted', run() { wanted = 0; heat = 0; bustTimer = 0; flash('🚔 Admin: wanted cleared'); return '🚔 Wanted cleared — the cops lost interest.'; } },
+  { label: '🔧 Repair + heal', run() { health = 100; flash('🔧 Admin: good as new'); return '🔧 Health back to 100.'; } },
+] };
