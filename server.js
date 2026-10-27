@@ -742,6 +742,7 @@ async function main() {
   const WebSocket = require('ws');
   const wss = new WebSocket.Server({ server: httpServer, path: '/ws' });
   const online = new Map(); // userId -> { ws, username, displayName, x, y, stage, tags }
+  const pursuit = new Map(); // City Pursuit room: userId -> { ws, username, displayName, tags, state }
 
   function broadcast(msg, exceptId) {
     const data = JSON.stringify(msg);
@@ -769,6 +770,61 @@ async function main() {
     if (!userId) { ws.close(4001, 'Not authenticated'); return; }
 
     const user = await stmtGetUserById.get(userId);
+
+    // ---- City Pursuit 3D room (?game=pursuit): relay car/foot state, keep out of the Miner Cat world ----
+    let gameParam = '';
+    try { gameParam = new URL(req.url, 'http://localhost').searchParams.get('game') || ''; } catch (e) {}
+    if (gameParam === 'pursuit') {
+      const tags = user.hide_tags ? {} : {
+        owner: !!user.is_owner, admin: !!user.is_admin,
+        moderator: !!user.is_moderator, developer: !!user.is_developer,
+      };
+      const pp = { ws, id: userId, username: user.username, displayName: user.display_name, tags, state: null };
+      if (pursuit.has(userId)) { try { pursuit.get(userId).ws.close(); } catch (e) {} }
+      pursuit.set(userId, pp);
+      console.log(`[ws-pursuit] ${pp.username} joined (${pursuit.size} in city)`);
+      const others = [...pursuit.values()].filter((q) => q.id !== userId).map((q) => ({
+        id: q.id, displayName: q.displayName, tags: q.tags, state: q.state,
+      }));
+      ws.send(JSON.stringify({ t: 'pwelcome', id: userId, players: others }));
+      for (const q of pursuit.values()) {
+        if (q.id !== userId && q.ws.readyState === WebSocket.OPEN) {
+          q.ws.send(JSON.stringify({ t: 'pjoin', player: { id: pp.id, displayName: pp.displayName, tags: pp.tags, state: null } }));
+        }
+      }
+      const toRoom = (obj, except) => {
+        const data = JSON.stringify(obj);
+        for (const q of pursuit.values()) {
+          if (q.id === except) continue;
+          if (q.ws.readyState === WebSocket.OPEN) q.ws.send(data);
+        }
+      };
+      ws.on('message', (raw) => {
+        let msg;
+        try { msg = JSON.parse(raw); } catch (e) { return; }
+        const me = pursuit.get(userId);
+        if (!me || me.ws !== ws) return;
+        if (msg.t === 'ppos') {
+          me.state = {
+            mode: msg.mode === 'foot' ? 'foot' : 'drive',
+            x: +msg.x || 0, y: +msg.y || 0, z: +msg.z || 0, a: +msg.a || 0,
+            c: msg.c | 0, mv: msg.mv ? 1 : 0,
+          };
+          toRoom({ t: 'ppos', id: userId, displayName: me.displayName, tags: me.tags, ...me.state }, userId);
+        } else if (msg.t === 'pevent' && (msg.kind === 'busted' || msg.kind === 'wasted')) {
+          toRoom({ t: 'pevent', id: userId, displayName: me.displayName, kind: msg.kind }, userId);
+        }
+      });
+      ws.on('close', () => {
+        if (pursuit.get(userId)?.ws === ws) {
+          pursuit.delete(userId);
+          toRoom({ t: 'pleave', id: userId });
+          console.log(`[ws-pursuit] ${pp.username} left (${pursuit.size} in city)`);
+        }
+      });
+      return;
+    }
+
     const player = {
       ws,
       id: userId,
