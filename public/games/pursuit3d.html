@@ -98,7 +98,7 @@ let cars = [], peds = [], cops = [], officers = [], trafficTimer = 0, pedTimer =
 let playerCar = null, char = null, charVel = { x: 0, z: 0 }, charAngle = 0, charPhase = 0, charBlend = 0;
 let cash = 0, heat = 0, wanted = 0, health = 100, bustTimer = 0, seenByCop = false, evadeShown = false;
 let elapsed = 0, shake = 0, flashT = 0, submitted = false, heli = null, heliSpot = { x: 0, z: 0 };
-let smokePool = [], driftTime = 0, topSpeed = 0, sunLight = null, clouds = [], headlight = null;
+let smokePool = [], driftTime = 0, topSpeed = 0, sunLight = null, clouds = [], headlight = null, underLight = null;
 // ============================== TEXTURES ==============================
 function buildingTexture(base, lit) {
   const cv = document.createElement('canvas'); cv.width = 256; cv.height = 512;
@@ -430,7 +430,7 @@ function garageHeight(x, z) {
 function parkingTexture() {
   const c = document.createElement('canvas'); c.width = 256; c.height = 256;
   const x = c.getContext('2d');
-  x.fillStyle = '#26282e'; x.fillRect(0, 0, 256, 256);
+  x.fillStyle = '#34373f'; x.fillRect(0, 0, 256, 256);
   x.fillStyle = 'rgba(255,255,255,0.05)';
   for (let i = 0; i < 260; i++) x.fillRect(Math.random() * 256, Math.random() * 256, 2, 2);
   x.strokeStyle = 'rgba(240,240,240,0.55)'; x.lineWidth = 3;
@@ -442,7 +442,7 @@ function parkingTexture() {
   return t;
 }
 function buildGarage() {
-  const conc = new THREE.MeshStandardMaterial({ color: 0x3a3f47, roughness: 0.95 });
+  const conc = new THREE.MeshStandardMaterial({ color: 0x4b515b, roughness: 0.95 });
   const dark = new THREE.MeshStandardMaterial({ color: 0x22242a, roughness: 1 });
   // entrance ramp surface: street level down to the garage floor
   const rampLen = Math.hypot(GAR.ex2 - GAR.ex1, -GAR.floor);
@@ -470,13 +470,15 @@ function buildGarage() {
     pil.position.set(px, -3.9, pz); pil.castShadow = true; scene.add(pil);
     colliders.push({ x1: px - 0.95, z1: pz - 0.95, x2: px + 0.95, z2: pz + 0.95 });
     const strip = new THREE.Mesh(new THREE.BoxGeometry(6, 0.14, 0.8),
-      new THREE.MeshStandardMaterial({ color: 0x111111, emissive: 0xfff2cc, emissiveIntensity: 2.2 }));
+      new THREE.MeshStandardMaterial({ color: 0x111111, emissive: 0xfff2cc, emissiveIntensity: 3.2 }));
     strip.position.set(px, -1.12, pz); scene.add(strip);
   }
-  for (const [lx, lz] of [[112, 24], [122, 48]]) {
-    const pl = new THREE.PointLight(0xffd9a0, 1.15, 44, 1.4);
-    pl.position.set(lx, -2.6, lz); scene.add(pl);
+  for (const [lx, lz] of [[110, 24], [126, 24], [110, 48], [126, 48]]) {
+    const pl = new THREE.PointLight(0xffd9a0, 2.1, 62, 1.1);
+    pl.position.set(lx, -2.4, lz); scene.add(pl);
   }
+  underLight = new THREE.PointLight(0xffe6b8, 0, 38, 1.1); // follows you underground so you can always see
+  scene.add(underLight);
   // interior wall colliders (surface cars are kept out by the plaza barriers)
   colliders.push({ x1: 100, z1: 10.8, x2: 136, z2: 12 });
   colliders.push({ x1: 100, z1: 60, x2: 136, z2: 61.2 });
@@ -1582,6 +1584,11 @@ function animate() {
   if (flashT > 0) { flashT -= dt; if (flashT <= 0) $('flashmsg').style.opacity = 0; }
   if (state !== 'play' && tchOwners.size) releaseAllTch();
   const anchor = mode === 'drive' && playerCar ? playerCar.mesh.position : (char ? char.position : { x: 0, z: 0 });
+  if (underLight) {
+    const tI = anchor.y < -1.5 ? 1.7 : 0;
+    underLight.intensity += (tI - underLight.intensity) * Math.min(1, dt * 5);
+    if (underLight.intensity > 0.02) underLight.position.set(anchor.x, anchor.y + 3.4, anchor.z);
+  }
   if (state === 'play') {
     elapsed += dt;
     peakWanted = Math.max(peakWanted, wanted);
