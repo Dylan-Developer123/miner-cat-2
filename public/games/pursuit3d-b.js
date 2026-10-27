@@ -238,14 +238,16 @@ $('bigMapWrap').onclick = () => toggleMap(false);
 $('minimapWrap').addEventListener('click', () => toggleMap(true));
 const bm = $('bigMap').getContext('2d');
 function drawBigMap() {
-  const S = 920 / 780, cx = 460, cy = 460, now = performance.now();
-  bm.fillStyle = '#17351a'; bm.fillRect(0, 0, 920, 920); // countryside
-  bm.fillStyle = '#2a2e36'; bm.fillRect(cx - CITY * S, cy - CITY * S, CITY * 2 * S, CITY * 2 * S); // city ground
+  const S = 920 / 1240, cx = 460, cy = 460, now = performance.now();
+  bm.fillStyle = '#0e3a5c'; bm.fillRect(0, 0, 920, 920); // ocean
+  const trace = pts => { bm.beginPath(); pts.forEach(([x, z], i) => { if (i === 0) bm.moveTo(cx + x * S, cy + z * S); else bm.lineTo(cx + x * S, cy + z * S); }); bm.closePath(); };
+  trace(offsetIsland(18)); bm.fillStyle = '#8a6f45'; bm.fill(); // sand rim
+  trace(ISLAND); bm.fillStyle = '#2a2e36'; bm.fill(); // island ground
   bm.fillStyle = '#1e4620'; bm.fillRect(cx + 8 * S, cy + 8 * S, 56 * S, 56 * S); // park
-  bm.fillStyle = '#4b5563'; // roads
-  for (let k = -GRID; k <= GRID; k++) {
-    bm.fillRect(cx + (roadCoord(k) - ROAD_W / 2) * S, cy - CITY * S, ROAD_W * S, CITY * 2 * S);
-    bm.fillRect(cx - CITY * S, cy + (roadCoord(k) - ROAD_W / 2) * S, CITY * 2 * S, ROAD_W * S);
+  bm.fillStyle = '#4b5563'; // roads — only the segments that touch land
+  for (let k = -GRID; k <= GRID; k++) for (let j = -GRID; j < GRID; j++) {
+    if (segLand('v', k, j)) bm.fillRect(cx + (roadCoord(k) - ROAD_W / 2) * S, cy + roadCoord(j) * S, ROAD_W * S, PITCH * S);
+    if (segLand('h', k, j)) bm.fillRect(cx + roadCoord(j) * S, cy + (roadCoord(k) - ROAD_W / 2) * S, PITCH * S, ROAD_W * S);
   }
   bm.fillStyle = '#3f4a5a'; bm.fillRect(cx + 80 * S, cy + 8 * S, 56 * S, 56 * S); // underground garage block
   bm.fillStyle = '#5b4a2f'; bm.fillRect(cx - 64 * S, cy + 8 * S, 56 * S, 56 * S); // parking garage block
