@@ -711,6 +711,14 @@ async function main() {
         broadcast({ t: 'leaderboard-refresh' });
         return res.json({ ok: true, username: target, tag, granted: grant });
       }
+      case 'resetScore': {
+        // Per-game admin: clear the caller's own best score in one game.
+        const game = String(req.body.game || '');
+        const validGames = ['snake', 'breakout', 'flappy', 'memory', '2048', 'clicker', 'pong', 'minesweeper', 'invaders', 'lander', 'racer', 'blackjack', 'word', 'pursuit3d'];
+        if (!validGames.includes(game)) return res.status(400).json({ error: 'Unknown game.' });
+        await db.prepare('DELETE FROM scores WHERE user_id = ? AND game = ?').run(req.user.id, game);
+        return res.json({ ok: true, game });
+      }
       default:
         return res.status(400).json({ error: 'Unknown admin command.' });
     }
