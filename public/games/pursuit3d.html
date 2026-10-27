@@ -697,16 +697,34 @@ function makePoliceStation(cx, cz) {
   colliders.push({ x1: cx - 10.5, z1: cz - 6, x2: cx + 10.5, z2: cz + 6 });
   sprinkleProps(cx, cz);
 }
+function createRenderer() {
+  // Safari on iPad can hand back a stillborn WebGL2 context whose shader-precision
+  // query returns null (THREE dies reading .precision). Fall through gentler
+  // settings and finally classic WebGL1, which is all this game needs.
+  const attempts = [
+    () => new THREE.WebGLRenderer({ antialias: true }),
+    () => new THREE.WebGLRenderer({ antialias: false, powerPreference: 'low-power', stencil: false, precision: 'mediump' }),
+    () => new THREE.WebGL1Renderer({ antialias: false, powerPreference: 'low-power', stencil: false, precision: 'mediump' }),
+    () => new THREE.WebGL1Renderer({ antialias: false, powerPreference: 'low-power', stencil: false, precision: 'lowp' })
+  ];
+  let lastErr = null;
+  for (const make of attempts) {
+    try {
+      const r = make();
+      const gl = r.getContext();
+      if (!gl || (gl.isContextLost && gl.isContextLost())) throw new Error('WebGL context was lost');
+      return r;
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error('WebGL is unavailable');
+}
 function buildCity() {
   scene = new THREE.Scene();
   const skyTex = makeSkyTexture();
   scene.background = skyTex;
   scene.fog = new THREE.Fog(0x2a2233, 130, 560);
   camera = new THREE.PerspectiveCamera(66, 720 / 460, 0.1, 1300);
-  // iPads can refuse a full-fat WebGL context (too many tabs holding graphics slots) —
-  // if the fancy one fails, fall back to a lighter context instead of a black screen
-  try { renderer = new THREE.WebGLRenderer({ antialias: true }); }
-  catch (e) { renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'low-power', stencil: false }); }
+  renderer = createRenderer();
   renderer.domElement.addEventListener('webglcontextlost', ev => {
     ev.preventDefault();
     try { if (!sessionStorage.getItem('cp_ctx')) { sessionStorage.setItem('cp_ctx', '1'); location.reload(); } } catch (e2) {}
@@ -1755,7 +1773,7 @@ function reset() {
   camera.lookAt(playerCar.mesh.position.x, 1.2, playerCar.mesh.position.z);
   hud();
 }
-function start() { if (state === 'over') reset(); state = 'play'; $('restart').textContent = '↻ Restart'; }
+function start() { if (!playerCar) return; if (state === 'over') reset(); state = 'play'; $('restart').textContent = '↻ Restart'; }
 // ============================== HUD + MINIMAP ==============================
 function hud() {
   $('starsHud').textContent = wanted > 0 ? '★'.repeat(wanted) + '☆'.repeat(5 - wanted) : '';
