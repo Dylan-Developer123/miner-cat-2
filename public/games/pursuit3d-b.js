@@ -246,8 +246,8 @@ function drawBigMap() {
   bm.fillStyle = '#1e4620'; bm.fillRect(cx + 8 * S, cy + 8 * S, 56 * S, 56 * S); // park
   bm.fillStyle = '#4b5563'; // roads — only the segments that touch land
   for (let k = -GRID; k <= GRID; k++) for (let j = -GRID; j < GRID; j++) {
-    if (segLand('v', k, j)) bm.fillRect(cx + (roadCoord(k) - ROAD_W / 2) * S, cy + roadCoord(j) * S, ROAD_W * S, PITCH * S);
-    if (segLand('h', k, j)) bm.fillRect(cx + roadCoord(j) * S, cy + (roadCoord(k) - ROAD_W / 2) * S, PITCH * S, ROAD_W * S);
+    if (segClear('v', k, j)) bm.fillRect(cx + (roadCoord(k) - ROAD_W / 2) * S, cy + (roadCoord(j) - 1) * S, ROAD_W * S, (PITCH + 2) * S);
+    if (segClear('h', k, j)) bm.fillRect(cx + (roadCoord(j) - 1) * S, cy + (roadCoord(k) - ROAD_W / 2) * S, (PITCH + 2) * S, ROAD_W * S);
   }
   bm.fillStyle = '#3f4a5a'; bm.fillRect(cx + 80 * S, cy + 8 * S, 56 * S, 56 * S); // underground garage block
   bm.fillStyle = '#5b4a2f'; bm.fillRect(cx - 64 * S, cy + 8 * S, 56 * S, 56 * S); // parking garage block
