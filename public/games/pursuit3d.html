@@ -74,6 +74,7 @@
 <div class="keys-help">🚗 Drive: <b>W A S D</b> / arrows · <b>Space</b> = handbrake drift · <b>F</b> = get out / steal a car<br>🚶 On foot: <b>WASD</b> move · <b>Shift</b> sprint · <b>F</b> hop in the nearest car — even a cop car 😏</div>
 <button class="action" id="restart">▶ Start</button>
 <button class="action" id="mpBtn" style="background:#2563eb">🌐 Multiplayer: OFF</button>
+<button class="action" id="tagBtn" style="background:#2563eb">🏷️ Name Tags: ON</button>
 <div id="acct"></div>
 <div id="lb"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -1960,7 +1961,7 @@ function spawnRemote(id, displayName, tags) {
   const nameSpr = makeNameSprite(displayName || 'Player', tags);
   group.add(carMesh); group.add(pedMesh); group.add(nameSpr);
   scene.add(group);
-  r = { id, group, carMesh, pedMesh, nameSpr, mode: 'drive', tx: 0, ty: 0, tz: 0, ta: 0, gx: 0, gy: 0, gz: 0, ga: 0, px: 0, pz: 0, color: null, phase: 0, mv: 0, seen: false };
+  r = { id, group, carMesh, pedMesh, nameSpr, mode: 'drive', tx: 0, ty: 0, tz: 0, ta: 0, gx: 0, gy: 0, gz: 0, ga: 0, px: 0, pz: 0, color: null, phase: 0, mv: 0, hideName: false, seen: false };
   remotes.set(id, r);
   return r;
 }
@@ -1973,7 +1974,7 @@ function removeRemote(id) {
 function setRemoteState(r, st) {
   if (!st) return;
   r.mode = st.mode === 'foot' ? 'foot' : 'drive';
-  r.tx = +st.x || 0; r.ty = +st.y || 0; r.tz = +st.z || 0; r.ta = +st.a || 0; r.mv = st.mv ? 1 : 0;
+  r.tx = +st.x || 0; r.ty = +st.y || 0; r.tz = +st.z || 0; r.ta = +st.a || 0; r.mv = st.mv ? 1 : 0; r.hideName = !!st.hide;
   if (!r.seen) { r.gx = r.tx; r.gy = r.ty; r.gz = r.tz; r.ga = r.ta; r.px = r.gx; r.pz = r.gz; r.seen = true; }
   if (r.mode === 'drive' && st.c && st.c !== r.color) {
     r.color = st.c;
@@ -1993,6 +1994,7 @@ function updateRemotes(dt) {
     r.carMesh.rotation.y = r.ga;
     r.pedMesh.rotation.y = r.ga;
     r.nameSpr.position.y = driving ? 2.55 : 2.35;
+    r.nameSpr.visible = !hideName && !r.hideName;
     if (!driving) {
       if (r.mv) r.phase += dt * 9;
       animatePerson(r.pedMesh, r.phase, r.mv ? 1 : 0.15);
@@ -2029,10 +2031,10 @@ function mpTick(dt) {
   let st = null;
   if (mode === 'drive' && playerCar) {
     const pp = playerCar.mesh.position;
-    st = { t: 'ppos', mode: 'drive', x: +pp.x.toFixed(2), y: +pp.y.toFixed(2), z: +pp.z.toFixed(2), a: +playerCar.angle.toFixed(3), c: playerCar.colorHex || 0xe11d48, mv: 0 };
+    st = { t: 'ppos', mode: 'drive', x: +pp.x.toFixed(2), y: +pp.y.toFixed(2), z: +pp.z.toFixed(2), a: +playerCar.angle.toFixed(3), c: playerCar.colorHex || 0xe11d48, mv: 0, hide: hideName ? 1 : 0 };
   } else if (char) {
     const pp = char.position;
-    st = { t: 'ppos', mode: 'foot', x: +pp.x.toFixed(2), y: +pp.y.toFixed(2), z: +pp.z.toFixed(2), a: +charAngle.toFixed(3), c: 0, mv: charBlend > 0.15 ? 1 : 0 };
+    st = { t: 'ppos', mode: 'foot', x: +pp.x.toFixed(2), y: +pp.y.toFixed(2), z: +pp.z.toFixed(2), a: +charAngle.toFixed(3), c: 0, mv: charBlend > 0.15 ? 1 : 0, hide: hideName ? 1 : 0 };
   }
   if (st) { try { mpWs.send(JSON.stringify(st)); } catch (e) {} }
 }
@@ -2075,6 +2077,20 @@ function mpConnect() {
   };
   ws.onerror = () => { try { ws.close(); } catch (e) {} };
 }
+let hideName = false;
+try { hideName = localStorage.getItem('cp_hidename') === '1'; } catch (e) {}
+function tagUi() {
+  $('tagBtn').textContent = hideName ? '🏷️ Name Tags: OFF' : '🏷️ Name Tags: ON';
+  $('tagBtn').style.background = hideName ? '#6b7280' : '#2563eb';
+}
+$('tagBtn').onclick = () => {
+  hideName = !hideName;
+  try { localStorage.setItem('cp_hidename', hideName ? '1' : '0'); } catch (e) {}
+  tagUi();
+  mpSendT = 0; // tell the room right away
+  flash(hideName ? '🏷️ Name tags hidden — yours is hidden from everyone too' : '🏷️ Name tags shown');
+};
+tagUi();
 $('mpBtn').onclick = mpConnect;
 
 const phys = {};
