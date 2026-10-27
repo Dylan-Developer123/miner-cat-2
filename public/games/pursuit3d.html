@@ -404,11 +404,26 @@ function applyGround(car, dt) {
 }
 
 function makeBuilding(cx, cz, b) {
-  const w = 15 + Math.random() * 17, d = 15 + Math.random() * 17;
+  let w = 15 + Math.random() * 17, d = 15 + Math.random() * 17;
   const centerBoost = Math.max(0, 1 - Math.hypot(cx, cz) / 330);
   const hgt = 11 + Math.pow(Math.random(), 1.6) * 44 + centerBoost * 24;
-  const ox = (Math.random() - 0.5) * (BLOCK - w - 6), oz = (Math.random() - 0.5) * (BLOCK - d - 6);
-  const bx = cx + ox, bz = cz + oz;
+  // place the building only where its whole footprint is on dry land — coast
+  // blocks get nudged inland, shrunk to fit, or skipped: no towers on the beach
+  const fits = (px, pz) => {
+    const m = 1.5;
+    return inIsland(px - w / 2 - m, pz - d / 2 - m) && inIsland(px + w / 2 + m, pz - d / 2 - m) &&
+           inIsland(px - w / 2 - m, pz + d / 2 + m) && inIsland(px + w / 2 + m, pz + d / 2 + m);
+  };
+  let bx = null, bz = null;
+  for (let t = 0; t < 10 && bx === null; t++) {
+    const px = cx + (Math.random() - 0.5) * (BLOCK - w - 6), pz = cz + (Math.random() - 0.5) * (BLOCK - d - 6);
+    if (fits(px, pz)) { bx = px; bz = pz; }
+  }
+  if (bx === null) {
+    w = Math.min(w, 20); d = Math.min(d, 20);
+    if (!fits(cx, cz)) return; // this sliver of coast stays empty
+    bx = cx; bz = cz;
+  }
   const tex = FACES[Math.floor(Math.random() * FACES.length)];
   const glassy = Math.random() < 0.3;
   const mat = glassy
@@ -1033,7 +1048,7 @@ function sprinkleProps(cx, cz) {
     const edge = Math.random() < 0.5;
     const x = cx + (edge ? (Math.random() < 0.5 ? -1 : 1) * (BLOCK / 2 - 2) : (Math.random() - 0.5) * BLOCK);
     const z = cz + (edge ? (Math.random() - 0.5) * BLOCK : (Math.random() < 0.5 ? -1 : 1) * (BLOCK / 2 - 2));
-    addTree(x, z, false);
+    if (inIsland(x, z)) addTree(x, z, false);
   }
 }
 // ============================== FACTORIES ==============================
