@@ -105,8 +105,9 @@ function updateRemotes(dt) {
   }
 }
 function mpUi() {
-  $('mpBtn').textContent = mpOn ? '🌐 Multiplayer: ON (' + (remotes.size + 1) + ' in the city) — tap to leave' : '🌐 Multiplayer: OFF';
-  $('mpBtn').style.background = mpOn ? '#16a34a' : '#2563eb';
+  const mb = $('mpBtn'); if (!mb) return; // the standalone button was removed — the mode picker owns multiplayer now
+  mb.textContent = mpOn ? '🌐 Multiplayer: ON (' + (remotes.size + 1) + ' in the city) — tap to leave' : '🌐 Multiplayer: OFF';
+  mb.style.background = mpOn ? '#16a34a' : '#2563eb';
 }
 function mpEvent(kind) {
   if (mpOn && mpWs && mpWs.readyState === 1) { try { mpWs.send(JSON.stringify({ t: 'pevent', kind })); } catch (e) {} }
@@ -128,7 +129,7 @@ function mpTick(dt) {
 }
 function mpConnect() {
   if (mpWs) { try { mpWs.close(); } catch (e) {} return; }
-  $('mpBtn').textContent = '🌐 Connecting…';
+  const mbc = $('mpBtn'); if (mbc) mbc.textContent = '🌐 Connecting…';
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const ws = new WebSocket(proto + '//' + location.host + '/ws?game=pursuit');
   mpWs = ws;
@@ -224,7 +225,7 @@ $('tagBtn').onclick = () => {
   flash(hideName ? '🏷️ Stealth ON — your name tag AND map dot are hidden from everyone' : '🏷️ Name tags shown');
 };
 tagUi();
-$('mpBtn').onclick = mpConnect;
+const _mb = $('mpBtn'); if (_mb) _mb.onclick = mpConnect;
 if (typeof pickMode === 'function') pickMode(gameMode);
 
 // ============================== FULLSCREEN MAP ==============================
