@@ -312,7 +312,7 @@ function landBlock(bi, bj) {
 }
 const STREET_V = ['Palm Dr', 'Harbor Blvd', 'Magnolia St', 'Euclid St', 'Brookhurst St', 'Grand Ave', 'Main St', 'Flower St', 'Bristol St', 'Tustin Ave', 'Newport Blvd', 'Jamboree Rd', 'Culver Dr'];
 const STREET_H = ['Katella Ave', 'Cerritos Ave', 'Ball Rd', 'Lincoln Ave', 'La Palma Ave', 'Commonwealth Ave', 'Chapman Ave', 'Orangewood Ave', 'Garden Grove Blvd', 'Westminster Blvd', 'Bolsa Ave', 'Edinger Ave', 'Warner Ave'];
-const DEAD_SEGS = new Set(['h:2:4', 'v:2:-3', 'v:-1:-4', 'h:-1:-4', 'v:-4:-5', 'v:-4:-4', 'h:-5:-5', 'h:-5:-4', 'h:3:5', 'h:3:-3', 'v:3:4']); // superblock interiors — no road through the middle
+const DEAD_SEGS = new Set(['h:2:4', 'v:2:-3', 'v:-1:-4', 'h:-1:-4', 'v:-4:-5', 'v:-4:-4', 'h:-5:-5', 'h:-5:-4', 'h:3:5', 'h:3:-3', 'v:3:4', 'h:-4:-5', 'h:-4:-4']); // superblock interiors — no road through the middle (the park's east-west pair was missing: a phantom road ran through North Park)
 function segClear(axis, k, j) {
   if (DEAD_SEGS.has(axis + ':' + k + ':' + j)) return false;
   // a road segment only exists if its FULL width stays on dry land the whole way —
@@ -750,7 +750,9 @@ function makePark(cx, cz) {
   }
 }
 function addTree(x, z, inPark, gy) {
-  if (distToPaths(x, z) < 7.5) return; // never plant a tree on a curved road
+  if (distToPaths(x, z) < 11) return; // never plant a tree on a curved road (the canopy reaches ~3 past the trunk)
+  const mx = ((x % PITCH) + PITCH) % PITCH, mz = ((z % PITCH) + PITCH) % PITCH;
+  if (Math.min(mx, PITCH - mx) < 10 || Math.min(mz, PITCH - mz) < 10) return; // or leaning over a straight road
   const g = new THREE.Group();
   const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.32, 1.7, 7), new THREE.MeshStandardMaterial({ color: 0x3f2d20, roughness: 1 }));
   trunk.position.y = 0.85; g.add(trunk);
@@ -785,8 +787,8 @@ function sprinkleProps(cx, cz) {
   // a few sidewalk trees per block (smashable, very GTA)
   for (let i = 0; i < 2; i++) {
     const edge = Math.random() < 0.5;
-    const x = cx + (edge ? (Math.random() < 0.5 ? -1 : 1) * (BLOCK / 2 - 2) : (Math.random() - 0.5) * BLOCK);
-    const z = cz + (edge ? (Math.random() - 0.5) * BLOCK : (Math.random() < 0.5 ? -1 : 1) * (BLOCK / 2 - 2));
+    const x = cx + (edge ? (Math.random() < 0.5 ? -1 : 1) * (BLOCK / 2 - 3.5) : (Math.random() - 0.5) * BLOCK);
+    const z = cz + (edge ? (Math.random() - 0.5) * BLOCK : (Math.random() < 0.5 ? -1 : 1) * (BLOCK / 2 - 3.5));
     if (inIsland(x, z)) addTree(x, z, false);
   }
 }
@@ -2044,8 +2046,8 @@ function syncTouch() {
   $('touchFoot').classList.toggle('on', touch && mode === 'foot');
 }
 </script>
-<script src="/games/pursuit3d-world.js?v=5"></script>
-<script src="/games/pursuit3d-b.js?v=11"></script>
+<script src="/games/pursuit3d-world.js?v=6"></script>
+<script src="/games/pursuit3d-b.js?v=12"></script>
 <script src="/games/admin-panel.js"></script>
 </body>
 </html>
