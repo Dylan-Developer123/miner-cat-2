@@ -1,6 +1,39 @@
 // Arqade shared admin panel — appears on every game page for admin-tagged accounts.
 // All powers are enforced server-side by POST /api/admin; this is just the UI.
 (async () => {
+  // ---- Global broadcast banner: Dylan's broadcast shows on EVERY game, for every player ----
+  // (Miner Cat 2 has its own built-in bar and doesn't load this file, so no double banner there.)
+  if (!document.getElementById('broadcast-bar') && !document.getElementById('arq-broadcast-bar')) {
+    const bstyle = document.createElement('style');
+    bstyle.textContent = `
+  #arq-broadcast-bar { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 99997; max-width: min(680px, 92vw); background: #191920; color: #ffe9a8; border: 2px solid #f5c542; border-radius: 12px; box-shadow: 0 0 18px rgba(245,197,66,.55), 0 6px 18px rgba(0,0,0,.5); padding: 9px 16px; font-family: 'Segoe UI', system-ui, sans-serif; font-size: 16px; font-weight: 700; text-align: center; pointer-events: none; display: none; }
+  #arq-broadcast-bar .from { color: #f5c542; white-space: nowrap; }
+  `;
+    document.head.appendChild(bstyle);
+    const bbar = document.createElement('div');
+    bbar.id = 'arq-broadcast-bar';
+    bbar.innerHTML = '📢 <span class="from">👑 OWNER:</span> <span id="arq-broadcast-text"></span>';
+    document.body.appendChild(bbar);
+    let lastMsg = null;
+    const checkBroadcast = async () => {
+      try {
+        const r = await fetch('/api/broadcast').then((x) => x.json());
+        const msg = (r && r.message) || '';
+        if (msg === lastMsg) return;
+        lastMsg = msg;
+        if (msg) {
+          bbar.querySelector('#arq-broadcast-text').textContent = msg;
+          bbar.style.display = 'block';
+        } else {
+          bbar.style.display = 'none';
+        }
+      } catch (e) { /* ignore — the next poll tries again */ }
+    };
+    checkBroadcast();
+    setInterval(checkBroadcast, 30000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) checkBroadcast(); });
+  }
+
   let user = null;
   try {
     const r = await fetch('/api/me');
