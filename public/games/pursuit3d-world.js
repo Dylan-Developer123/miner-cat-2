@@ -151,6 +151,38 @@ function addStreetSign(x, z, vName, hName) {
   mk(hName, 0, 3.35);
   mk(vName, Math.PI / 2, 2.95);
 }
+function distPtSeg(px, pz, ax, az, bx, bz) {
+  const dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz;
+  let t = L2 ? ((px - ax) * dx + (pz - az) * dz) / L2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(ax + t * dx - px, az + t * dz - pz);
+}
+function distPtRect(px, pz, x1, z1, x2, z2) {
+  return Math.hypot(Math.max(x1 - px, 0, px - x2), Math.max(z1 - pz, 0, pz - z2));
+}
+function segsCross(ax, az, bx, bz, cx, cz, dx, dz) {
+  const o = (px, pz, qx, qz, rx, rz) => Math.sign((qz - pz) * (rx - qx) - (qx - px) * (rz - qz));
+  return o(ax, az, bx, bz, cx, cz) !== o(ax, az, bx, bz, dx, dz) && o(cx, cz, dx, dz, ax, az) !== o(cx, cz, dx, dz, bx, bz);
+}
+function distSegRect(ax, az, bx, bz, x1, z1, x2, z2) { // 0 when the segment touches or crosses the rect
+  const inR = (x, z) => x >= x1 && x <= x2 && z >= z1 && z <= z2;
+  if (inR(ax, az) || inR(bx, bz)) return 0;
+  const E = [[x1, z1, x2, z1], [x2, z1, x2, z2], [x2, z2, x1, z2], [x1, z2, x1, z1]];
+  let d = Math.min(distPtRect(ax, az, x1, z1, x2, z2), distPtRect(bx, bz, x1, z1, x2, z2));
+  for (const e of E) {
+    if (segsCross(ax, az, bx, bz, e[0], e[1], e[2], e[3])) return 0;
+    d = Math.min(d, distPtSeg(e[0], e[1], ax, az, bx, bz), distPtSeg(e[2], e[3], ax, az, bx, bz));
+  }
+  return d;
+}
+function pathClearOfRect(pts, closed, x1, z1, x2, z2) { // every path segment stays 7+ from the rect (ribbon half-width 6.5 + margin)
+  const n = pts.length, lim = closed ? n : n - 1;
+  for (let i = 0; i < lim; i++) {
+    const a = pts[i], b = pts[(i + 1) % n];
+    if (distSegRect(a[0], a[1], b[0], b[1], x1, z1, x2, z2) <= 7) return false;
+  }
+  return true;
+}
 function makeBuilding(cx, cz, b) {
   let w = 15 + Math.random() * 17, d = 15 + Math.random() * 17;
   const centerBoost = Math.max(0, 1 - Math.hypot(cx, cz) / 330);
@@ -159,8 +191,13 @@ function makeBuilding(cx, cz, b) {
   // blocks get nudged inland, shrunk to fit, or skipped: no towers on the beach
   const fits = (px, pz) => {
     const m = 1.5;
-    const cs = [[px - w / 2 - m, pz - d / 2 - m], [px + w / 2 + m, pz - d / 2 - m], [px - w / 2 - m, pz + d / 2 + m], [px + w / 2 + m, pz + d / 2 + m]];
-    return cs.every(c => inIsland(c[0], c[1]) && distToPaths(c[0], c[1]) > 9.5); // on land AND fully off the curved roads (road half-width 6.5 + margin)
+    const x1 = px - w / 2 - m, x2 = px + w / 2 + m, z1 = pz - d / 2 - m, z2 = pz + d / 2 + m;
+    const cs = [[x1, z1], [x2, z1], [x1, z2], [x2, z2], [px, z1], [px, z2], [x1, pz], [x2, pz]]; // corners + edge midpoints
+    if (!cs.every(c => inIsland(c[0], c[1]))) return false; // whole footprint on dry land
+    if (distToPaths(px, pz) > Math.hypot(w, d) / 2 + 12) return true; // nowhere near a curved road — fast pass
+    // the old corner-only check let a curve cut through the middle of a wide building;
+    // this tests every road segment against the whole footprint instead
+    return pathClearOfRect(RING_PTS, true, x1, z1, x2, z2) && pathClearOfRect(PARK_PTS, false, x1, z1, x2, z2);
   };
   let bx = null, bz = null;
   for (let t = 0; t < 10 && bx === null; t++) {
@@ -511,7 +548,7 @@ async function buildCity() {
     if (SUPER[bk] === 'park2x2') { makeParkPlain(cx, cz, false); makeParkPlain(cx + PITCH, cz, false); makeParkPlain(cx, cz + PITCH, false); makeParkPlain(cx + PITCH, cz + PITCH, false); makeLake(cx + PITCH / 2, cz + PITCH / 2); parkSign(cx + PITCH + 14, cz + PITCH + 22, 'NORTH PARK'); continue; }
     const deepLand = inIsland(cx - 28, cz - 28) && inIsland(cx + 28, cz - 28) && inIsland(cx - 28, cz + 28) && inIsland(cx + 28, cz + 28);
     const roll = Math.random();
-    const clearOfCurves = distToPaths(cx, cz) > 36; // lots/plazas are wide — never let one straddle a curved road
+    const clearOfCurves = pathClearOfRect(RING_PTS, true, cx - 27, cz - 27, cx + 27, cz + 27) && pathClearOfRect(PARK_PTS, false, cx - 27, cz - 27, cx + 27, cz + 27); // whole lot/plaza footprint clear of the curved roads
     if (deepLand && clearOfCurves && roll < 0.10) { makeParkingLot(cx, cz); continue; }
     if (deepLand && clearOfCurves && roll < 0.20) { makePlaza(cx, cz); continue; }
     const n = 1 + Math.floor(Math.random() * 3);
