@@ -105,9 +105,13 @@ function updateRemotes(dt) {
   }
 }
 function mpUi() {
-  const mb = $('mpBtn'); if (!mb) return; // the standalone button was removed — the mode picker owns multiplayer now
-  mb.textContent = mpOn ? '🌐 Multiplayer: ON (' + (remotes.size + 1) + ' in the city) — tap to leave' : '🌐 Multiplayer: OFF';
-  mb.style.background = mpOn ? '#16a34a' : '#2563eb';
+  const mb = $('mpBtn');
+  if (mb) {
+    mb.textContent = mpOn ? '🌐 Multiplayer: ON (' + (remotes.size + 1) + ' in the city) — tap to leave' : '🌐 Multiplayer: OFF';
+    mb.style.background = mpOn ? '#16a34a' : '#2563eb';
+  }
+  const mm = $('modeMp'); // the player counter lives on the mode button now
+  if (mm) mm.textContent = mpOn ? '🌐 Multiplayer · ' + (remotes.size + 1) + ' in city' : '🌐 Multiplayer';
 }
 function mpEvent(kind) {
   if (mpOn && mpWs && mpWs.readyState === 1) { try { mpWs.send(JSON.stringify({ t: 'pevent', kind })); } catch (e) {} }
@@ -130,6 +134,7 @@ function mpTick(dt) {
 function mpConnect() {
   if (mpWs) { try { mpWs.close(); } catch (e) {} return; }
   const mbc = $('mpBtn'); if (mbc) mbc.textContent = '🌐 Connecting…';
+  const mmc = $('modeMp'); if (mmc) mmc.textContent = '🌐 Connecting…';
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const ws = new WebSocket(proto + '//' + location.host + '/ws?game=pursuit');
   mpWs = ws;
@@ -226,6 +231,12 @@ $('tagBtn').onclick = () => {
 };
 tagUi();
 const _mb = $('mpBtn'); if (_mb) _mb.onclick = mpConnect;
+// tapping a mode applies it right away: Multiplayer connects on the spot, any other mode disconnects
+const _pickModeBase = pickMode;
+pickMode = function (m) {
+  _pickModeBase(m);
+  if ((m === 'multiplayer') !== !!mpWs) mpConnect();
+};
 if (typeof pickMode === 'function') pickMode(gameMode);
 
 // ============================== FULLSCREEN MAP ==============================
