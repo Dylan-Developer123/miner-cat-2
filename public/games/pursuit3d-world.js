@@ -283,6 +283,16 @@ function makeBuilding(cx, cz, b) {
 // ===== CURVED ROADS ===== the grid stays for traffic AI; these are true curves.
 // Shore Drive: a ring road that follows the island's bean shape, inset from the
 // rim. North Park Drive: an S-curve sweeping through the 2x2 park.
+const PARK_PTS = (() => {
+  // sweeps through the middle of the 2x2 park, past the lake — the old curve
+  // hugged the shore and ran right on top of Shore Drive
+  const out = [], P0 = [-216, -360], P1 = [-236, -236], P2 = [-360, -216];
+  for (let i = 0; i <= 28; i++) {
+    const t = i / 28, a = (1 - t) * (1 - t), b = 2 * (1 - t) * t, c = t * t;
+    out.push([a * P0[0] + b * P1[0] + c * P2[0], a * P0[1] + b * P1[1] + c * P2[1]]);
+  }
+  return out;
+})();
 const RING_PTS = (() => {
   const poly = offsetIsland(-26), out = [];
   for (let i = 0; i < poly.length; i++) {
@@ -290,15 +300,62 @@ const RING_PTS = (() => {
     const n = Math.max(1, Math.ceil(Math.hypot(x2 - x1, z2 - z1) / 7));
     for (let q = 0; q < n; q++) out.push([x1 + (x2 - x1) * q / n, z1 + (z2 - z1) * q / n]);
   }
-  return out;
-})();
-const PARK_PTS = (() => {
-  const out = [], P0 = [-216, -360], P1 = [-368, -368], P2 = [-360, -216];
-  for (let i = 0; i <= 28; i++) {
-    const t = i / 28, a = (1 - t) * (1 - t), b = 2 * (1 - t) * t, c = t * t;
-    out.push([a * P0[0] + b * P1[0] + c * P2[0], a * P0[1] + b * P1[1] + c * P2[1]]);
+  // The raw inset ring runs down the middle of the shore-side streets (the rim
+  // roughly follows the grid), so push every point clear of every real road
+  // segment and of North Park Drive — Shore Drive always reads as its own road.
+  const segs = [];
+  for (let k = -GRID; k <= GRID; k++) for (let j = -GRID; j < GRID; j++) {
+    if (segClear('v', k, j)) segs.push([roadCoord(k), roadCoord(j), roadCoord(k), roadCoord(j) + PITCH]);
+    if (segClear('h', k, j)) segs.push([roadCoord(j), roadCoord(k), roadCoord(j) + PITCH, roadCoord(k)]);
   }
-  return out;
+  const parkSegs = [];
+  for (let i = 0; i < PARK_PTS.length - 1; i++) parkSegs.push([PARK_PTS[i][0], PARK_PTS[i][1], PARK_PTS[i + 1][0], PARK_PTS[i + 1][1]]);
+  const nearest = (px, pz, ss) => {
+    let best = { d: 1e18, qx: px, qz: pz };
+    for (const sg of ss) {
+      const dx = sg[2] - sg[0], dz = sg[3] - sg[1], L2 = dx * dx + dz * dz;
+      let t = L2 ? ((px - sg[0]) * dx + (pz - sg[1]) * dz) / L2 : 0;
+      t = Math.max(0, Math.min(1, t));
+      const qx = sg[0] + t * dx, qz = sg[1] + t * dz, d = Math.hypot(px - qx, pz - qz);
+      if (d < best.d) best = { d, qx, qz };
+    }
+    return best;
+  };
+  const pushFrom = (pt, ss, target) => {
+    const r = nearest(pt[0], pt[1], ss);
+    if (r.d >= target) return pt;
+    let ux = pt[0] - r.qx, uz = pt[1] - r.qz;
+    const L = Math.hypot(ux, uz);
+    if (L < 0.01) { ux = r.qx - 8; uz = r.qz - 6; const l2 = Math.hypot(ux, uz) || 1; ux /= l2; uz /= l2; } else { ux /= L; uz /= L; }
+    for (const t of [target, target - 1.5, target - 3, target - 5]) {
+      for (const sd of [1, -1]) {
+        const nx = r.qx + ux * sd * t, nz = r.qz + uz * sd * t;
+        if (inIsland(nx, nz) && distToShore(nx, nz) >= 8.5) return [nx, nz];
+      }
+    }
+    return pt;
+  };
+  const smooth = (pts, w, iters) => {
+    let a = pts;
+    for (let it = 0; it < iters; it++) {
+      const n = a.length, o2 = [];
+      for (let i = 0; i < n; i++) {
+        let sx = 0, sz = 0, c = 0;
+        for (let o = -w; o <= w; o++) { const q = a[(i + o + n) % n]; sx += q[0]; sz += q[1]; c++; }
+        o2.push([sx / c, sz / c]);
+      }
+      a = o2;
+    }
+    return a;
+  };
+  let pts = out;
+  for (let pass = 0; pass < 4; pass++) {
+    pts = pts.map(pt => pushFrom(pushFrom(pt, segs, 20.5), parkSegs, 16.5));
+    pts = smooth(pts, 2, 2);
+  }
+  pts = pts.map(pt => pushFrom(pushFrom(pt, segs, 18.5), parkSegs, 16));
+  pts = pts.map(pt => pushFrom(pushFrom(pt, segs, 17.5), parkSegs, 15.5));
+  return pts;
 })();
 function distToPts(x, z, pts) {
   let d = 1e18;
