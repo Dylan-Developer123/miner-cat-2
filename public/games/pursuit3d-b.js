@@ -1,5 +1,6 @@
 // ============================== MULTIPLAYER ==============================
 let mpWs = null, mpOn = false, mpSendT = 0;
+let mpTimer = null; // connect watchdog — never sit on 'Connecting…' forever
 const remotes = new Map();
 function tagPrefix(tags) {
   if (!tags) return '';
@@ -132,15 +133,24 @@ function mpTick(dt) {
   if (st) { try { mpWs.send(JSON.stringify(st)); } catch (e) {} }
 }
 function mpConnect() {
+  if (mpWs && mpWs.readyState >= 2) mpWs = null; // a dead/closing socket must not block a fresh connect
   if (mpWs) { try { mpWs.close(); } catch (e) {} return; }
   const mbc = $('mpBtn'); if (mbc) mbc.textContent = '🌐 Connecting…';
   const mmc = $('modeMp'); if (mmc) mmc.textContent = '🌐 Connecting…';
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const ws = new WebSocket(proto + '//' + location.host + '/ws?game=pursuit');
   mpWs = ws;
+  clearTimeout(mpTimer);
+  mpTimer = setTimeout(() => { // 10s with no welcome = the connection is stuck (blocked network, cold server…)
+    if (!mpOn && mpWs === ws) {
+      try { ws.close(); } catch (e) {}
+      flash('🌐 Multiplayer could not connect — school Wi-Fi can block it. Tap Multiplayer to try again.');
+    }
+  }, 10000);
   ws.onmessage = ev => {
     let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
     if (m.t === 'pwelcome') {
+      clearTimeout(mpTimer);
       mpOn = true;
       for (const pl of m.players) { const r = spawnRemote(pl.id, pl.displayName, pl.tags); if (pl.state) setRemoteState(r, pl.state); }
       mpUi();
@@ -167,11 +177,16 @@ function mpConnect() {
     }
   };
   ws.onclose = ev => {
+    clearTimeout(mpTimer);
     if (mpWs === ws) mpWs = null;
     mpOn = false;
     for (const id of [...remotes.keys()]) removeRemote(id);
     mpUi();
-    if (ev.code === 4001) $('msg').textContent = '🌐 Multiplayer needs an account — sign in on the Arqade home page first, then tap Multiplayer again.';
+    if (ev.code === 4001) {
+      $('msg').textContent = '🌐 Multiplayer needs an account — sign in on the Arqade home page first, then tap Multiplayer again.';
+      flash('🌐 Multiplayer needs an account — sign in on the Arqade home page first, then tap Multiplayer');
+      const mm = $('modeMp'); if (mm) mm.textContent = '🌐 Multiplayer — sign in first';
+    }
   };
   ws.onerror = () => { try { ws.close(); } catch (e) {} };
 }
