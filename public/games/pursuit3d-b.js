@@ -1,6 +1,7 @@
 // ============================== MULTIPLAYER ==============================
 let mpWs = null, mpOn = false, mpSendT = 0;
 let mpTimer = null; // connect watchdog — never sit on 'Connecting…' forever
+let mpRetryT = null, mpRetryN = 0; // auto-rejoin backoff while Multiplayer is the picked mode
 const remotes = new Map();
 function tagPrefix(tags) {
   if (!tags) return '';
@@ -151,6 +152,7 @@ function mpConnect() {
     let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
     if (m.t === 'pwelcome') {
       clearTimeout(mpTimer);
+      clearTimeout(mpRetryT); mpRetryN = 0; // healthy again — reset the rejoin backoff
       mpOn = true;
       for (const pl of m.players) { const r = spawnRemote(pl.id, pl.displayName, pl.tags); if (pl.state) setRemoteState(r, pl.state); }
       mpUi();
@@ -178,6 +180,7 @@ function mpConnect() {
   };
   ws.onclose = ev => {
     clearTimeout(mpTimer);
+    const wasOn = mpOn;
     if (mpWs === ws) mpWs = null;
     mpOn = false;
     for (const id of [...remotes.keys()]) removeRemote(id);
@@ -186,6 +189,17 @@ function mpConnect() {
       $('msg').textContent = '🌐 Multiplayer needs an account — sign in on the Arqade home page first, then tap Multiplayer again.';
       flash('🌐 Multiplayer needs an account — sign in on the Arqade home page first, then tap Multiplayer');
       const mm = $('modeMp'); if (mm) mm.textContent = '🌐 Multiplayer — sign in first';
+      return;
+    }
+    if (gameMode === 'multiplayer') {
+      // dropped on its own (network blip, iPad slept, server restarted for an update) — rejoin by itself
+      if (mpRetryN >= 5) { const mm = $('modeMp'); if (mm) mm.textContent = '🌐 Multiplayer — tap to retry'; return; }
+      const delay = [1500, 4000, 8000, 15000, 30000][mpRetryN] || 30000;
+      mpRetryN++;
+      const mm = $('modeMp'); if (mm) mm.textContent = '🌐 Reconnecting…';
+      if (wasOn) flash('🌐 Multiplayer dropped — reconnecting…');
+      clearTimeout(mpRetryT);
+      mpRetryT = setTimeout(() => { if (gameMode === 'multiplayer' && !mpWs) mpConnect(); }, delay);
     }
   };
   ws.onerror = () => { try { ws.close(); } catch (e) {} };
@@ -250,6 +264,7 @@ const _mb = $('mpBtn'); if (_mb) _mb.onclick = mpConnect;
 const _pickModeBase = pickMode;
 pickMode = function (m) {
   _pickModeBase(m);
+  if (m === 'multiplayer') mpRetryN = 0;
   if ((m === 'multiplayer') !== !!mpWs) mpConnect();
 };
 if (typeof pickMode === 'function') pickMode(gameMode);
